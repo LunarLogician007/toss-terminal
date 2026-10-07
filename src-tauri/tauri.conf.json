@@ -1,0 +1,108 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "TOSS Terminal",
+  "version": "0.8.6",
+  "identifier": "app.toss.terminal",
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "pnpm build",
+    "frontendDist": "../dist",
+    "removeUnusedCommands": true
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "TOSS Terminal",
+        "width": 800,
+        "height": 600,
+        "minWidth": 420,
+        "minHeight": 280,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "visible": false,
+        "dragDropEnabled": true,
+        "transparent": true
+      }
+    ],
+    "macOSPrivateApi": true,
+    "security": {
+      "csp": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: asset: https://asset.localhost blob:; media-src 'self' asset: https://asset.localhost blob:; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost https: http://localhost:* http://127.0.0.1:*; frame-src 'self' http: https: asset: https://asset.localhost; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'",
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["**"]
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "copyright": "Copyright 2026 Crynta (Terax) and TOSS Terminal contributors",
+    "license": "Apache-2.0",
+    "publisher": "TOSS Terminal",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "macOS": {
+      "minimumSystemVersion": "13.0",
+      "entitlements": "./entitlements.plist"
+    },
+    "linux": {
+      "deb": {
+        "section": "utils",
+        "depends": [
+          "libwebkit2gtk-4.1-0",
+          "libgtk-3-0"
+        ]
+      },
+      "rpm": {
+        "depends": [
+          "webkit2gtk4.1",
+          "gtk3"
+        ]
+      },
+      "appimage": {
+        "bundleMediaFramework": true
+      }
+    },
+    "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      },
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": [
+          "English"
+        ],
+        "displayLanguageSelector": false,
+        "installerIcon": "icons/icon.ico",
+        "installerHooks": "./installer-hooks.nsh"
+      }
+    },
+    "category": "DeveloperTool",
+    "shortDescription": "Lightweight tiling terminal",
+    "longDescription": "TOSS Terminal — a lightweight tiling terminal workspace with a file explorer, Markdown viewer, code editor, web preview, source control and local dictation. Based on Terax by crynta (Apache-2.0).",
+    "fileAssociations": [
+      {
+        "name": "TOSS Terminal Document",
+        "role": "Editor",
+        "mimeType": "text/plain",
+        "ext": [
+          "json", "jsonc", "txt", "log", "csv", "tsv",
+          "md", "markdown", "mdx",
+          "js", "mjs", "cjs", "jsx", "ts", "tsx", "mts", "cts",
+          "java", "kt", "kts", "gradle",
+          "py", "rb", "php", "go", "rs", "swift", "dart", "lua",
+          "c", "h", "cpp", "cc", "hpp", "hh", "cs",
+          "html", "htm", "css", "scss", "sass", "less", "vue", "svelte",
+          "xml", "yaml", "yml", "toml", "ini", "cfg", "conf", "properties",
+          "sh", "bash", "zsh", "sql", "graphql", "proto"
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,215 @@
+import type { PaneDirection, SplitDir } from "@/modules/terminal/lib/panes";
+
+export type PrefixKey = "ctrl+b" | "ctrl+a" | "ctrl+space";
+
+export type TilingAction =
+  | { type: "newTerminal" }
+  | { type: "focus"; dir: PaneDirection }
+  | { type: "swap"; dir: PaneDirection }
+  | { type: "resize"; axis: SplitDir; grow: boolean }
+  | { type: "split"; dir: SplitDir }
+  | { type: "cycle"; delta: 1 | -1 }
+  | { type: "equalize" }
+  | { type: "rotate" }
+  | { type: "zoom" }
+  | { type: "close" }
+  | { type: "help" }
+  | { type: "dictate" }
+  | { type: "sendPrefix" };
+
+export type PrefixState =
+  | { mode: "idle" }
+  | { mode: "armed" }
+  | { mode: "repeat"; key: string; until: number };
+
+/** The parts of a KeyboardEvent the prefix looks at. */
+export type KeyInput = {
+  key: string;
+  /** The physical key ("KeyB"), which stays reliable under Control. */
+  code?: string;
+  ctrlKey: boolean;
+  metaKey: boolean;
+  altKey: boolean;
+  shiftKey: boolean;
+  isComposing?: boolean;
+};
+
+export type PrefixStep = {
+  state: PrefixState;
+  action: TilingAction | null;
+  /** Stop the key here, so neither the shell nor a global shortcut sees it. */
+  consume: boolean;
+};
+
+/** How long a resize key keeps repeating without the prefix, like tmux. */
+export const REPEAT_MS = 600;
+export const IDLE: PrefixState = { mode: "idle" };
+
+const MODIFIERS = new Set(["Shift", "Control", "Alt", "Meta", "CapsLock"]);
+const PREFIX_CHAR: Record<PrefixKey, string> = {
+  "ctrl+b": "b",
+  "ctrl+a": "a",
+  "ctrl+space": " ",
+};
+const PREFIX_CODE: Record<PrefixKey, string> = {
+  "ctrl+b": "KeyB",
+  "ctrl+a": "KeyA",
+  "ctrl+space": "Space",
+};
+// What `key` can be under Control on macOS WebKit: the control character.
+const PREFIX_CONTROL_CHAR: Record<PrefixKey, string> = {
+  "ctrl+b": "\u0002",
+  "ctrl+a": "\u0001",
+  "ctrl+space": "\u0000",
+};
+
+/**
+ * Under Control, macOS WebKit may report the control character ("\u0002")
+ * as `key` instead of the letter, so the physical key (`code`) is checked as
+ * well, the way toss's terminal input reads modified keys. The letter is
+ * still accepted, for layouts where the letter and the physical key differ.
+ */
+function matchesPrefix(e: KeyInput, prefix: PrefixKey): boolean {
+  if (!e.ctrlKey || e.metaKey || e.altKey) return false;
+  if (e.code !== undefined && e.code === PREFIX_CODE[prefix]) return true;
+  if (e.key.toLowerCase() === PREFIX_CHAR[prefix]) return true;
+  return e.code === undefined && e.key === PREFIX_CONTROL_CHAR[prefix];
+}
+
+const FOCUS: Record<string, PaneDirection> = {
+  h: "left",
+  j: "down",
+  k: "up",
+  l: "right",
+  ArrowLeft: "left",
+  ArrowDown: "down",
+  ArrowUp: "up",
+  ArrowRight: "right",
+};
+const SWAP: Record<string, PaneDirection> = {
+  H: "left",
+  J: "down",
+  K: "up",
+  L: "right",
+};
+// tuios's layout keys: < > for width, { } for height.
+const RESIZE: Record<string, { axis: SplitDir; grow: boolean }> = {
+  "<": { axis: "row", grow: false },
+  ">": { axis: "row", grow: true },
+  "{": { axis: "col", grow: false },
+  "}": { axis: "col", grow: true },
+};
+// tuios's splits: - stacks the new pane below, | or \ puts it beside.
+const SPLIT: Record<string, SplitDir> = { "-": "col", "|": "row", "\\": "row" };
+
+/** The action the key after the prefix asks for, or null for none. */
+/**
+ * The key as the user meant it. Control may still be held from the prefix,
+ * and under Control macOS WebKit can report a control character, so a letter
+ * is read from the physical key instead.
+ */
+function intendedKey(e: KeyInput): string {
+  if (!e.ctrlKey) return e.key;
+  const letter = e.code?.match(/^Key([A-Z])$/)?.[1];
+  if (!letter) return e.key;
+  return e.shiftKey ? letter : letter.toLowerCase();
+}
+
+function actionForKey(e: KeyInput): TilingAction | null {
+  if (e.metaKey || e.altKey) return null;
+  // Dictation: Space, with Control still held or not. Under Control WebKit
+  // may report Space as "\u0000", so the physical key decides.
+  if (e.code === "Space" || e.key === " ") return { type: "dictate" };
+  const key = intendedKey(e);
+  return actionForPlainKey(key, e.shiftKey);
+}
+
+/** The prefix table, matching tuios's defaults (plus h/j/k/l and Enter). */
+function actionForPlainKey(
+  key: string,
+  shiftKey: boolean,
+): TilingAction | null {
+  if (key === "Enter" || key === "c") return { type: "newTerminal" };
+  if (key === "Tab") return { type: "cycle", delta: shiftKey ? -1 : 1 };
+  if (key === "n") return { type: "cycle", delta: 1 };
+  if (key === "p") return { type: "cycle", delta: -1 };
+  if (key.startsWith("Arrow") && FOCUS[key]) {
+    const dir = FOCUS[key];
+    return shiftKey ? { type: "swap", dir } : { type: "focus", dir };
+  }
+  if (FOCUS[key]) return { type: "focus", dir: FOCUS[key] };
+  if (SWAP[key]) return { type: "swap", dir: SWAP[key] };
+  if (SPLIT[key]) return { type: "split", dir: SPLIT[key] };
+  if (RESIZE[key]) return { type: "resize", ...RESIZE[key] };
+  if (key === "=") return { type: "equalize" };
+  if (key === "R") return { type: "rotate" };
+  if (key === "z") return { type: "zoom" };
+  if (key === "x") return { type: "close" };
+  if (key === "?") return { type: "help" };
+  // v also dictates, for when the prefix itself is Ctrl+Space.
+  if (key === "v") return { type: "dictate" };
+  return null;
+}
+
+/** Keys that keep working without the prefix for a moment, as in tuios. */
+function repeats(key: string, action: TilingAction): boolean {
+  return (
+    action.type === "resize" ||
+    (action.type === "focus" && key.startsWith("Arrow"))
+  );
+}
+
+const PASS: PrefixStep = { state: IDLE, action: null, consume: false };
+
+/**
+ * One key through the prefix. The prefix arms; the next key runs its action
+ * (or cancels, quietly, when it has none); the prefix twice sends the prefix
+ * itself to the shell. A resize key keeps working without the prefix while it
+ * is pressed again within REPEAT_MS. Outside a terminal tab, or while an input
+ * method is composing, the layer stands aside.
+ */
+export function stepPrefix(
+  state: PrefixState,
+  e: KeyInput,
+  prefix: PrefixKey,
+  now: number,
+  inTerminalTab: boolean,
+): PrefixStep {
+  if (!inTerminalTab || e.isComposing) return PASS;
+  // Shift on its way to a capital letter must not cancel an armed prefix.
+  if (MODIFIERS.has(e.key)) return { state, action: null, consume: false };
+
+  if (state.mode === "repeat") {
+    if (now <= state.until && e.key === state.key) {
+      const action = actionForKey(e);
+      if (action && repeats(e.key, action)) {
+        return {
+          state: { mode: "repeat", key: e.key, until: now + REPEAT_MS },
+          action,
+          consume: true,
+        };
+      }
+    }
+    return stepPrefix(IDLE, e, prefix, now, inTerminalTab);
+  }
+
+  if (state.mode === "armed") {
+    if (matchesPrefix(e, prefix)) {
+      return { state: IDLE, action: { type: "sendPrefix" }, consume: true };
+    }
+    const action = e.key === "Escape" ? null : actionForKey(e);
+    if (action && repeats(e.key, action)) {
+      return {
+        state: { mode: "repeat", key: e.key, until: now + REPEAT_MS },
+        action,
+        consume: true,
+      };
+    }
+    return { state: IDLE, action, consume: true };
+  }
+
+  if (matchesPrefix(e, prefix)) {
+    return { state: { mode: "armed" }, action: null, consume: true };
+  }
+  return PASS;
+}

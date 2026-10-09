@@ -15,8 +15,8 @@ control, and:
   command palette (`Cmd+P`) has everything else: tabs, Spaces, dictation, git.
   Monospace, square corners, no blur, shadows or animations.
 - **tuios-style tiling**: panes place themselves (BSP), with gaps and title
-  bars (drag one to move the window); a `Ctrl+B` prefix drives them (`|` and `-` split, arrows
-  move, `z` zoom, `x` close, `?` lists every key).
+  bars (drag one to move the window); a `Ctrl+B` prefix drives them (`|` and
+  `-` split, arrows move, `z` zoom, `x` close, `?` lists every key).
 - **Spaces** for grouping tabs, and an **agents list** in the sidebar that
   tracks Claude Code, Codex and others running in your terminals ("works on a
   turn", "user input needed").

@@ -246,6 +246,17 @@ export function createSuggestEngine(deps: SuggestDeps) {
       refresh();
       return taken;
     },
+    /** DIAGNOSTIC (temporary). */
+    debugState() {
+      return {
+        enabled: deps.enabled(),
+        atPrompt,
+        line,
+        shellSuggests,
+        full,
+        commandSeq,
+      };
+    },
     /** What's drawn now, if anything (to redraw it after the cursor moves). */
     visible(): Offer | null {
       return current();

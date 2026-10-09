@@ -1,5 +1,6 @@
 import type { IDecoration, IDisposable, IMarker, Terminal } from "@xterm/xterm";
 import { usePreferencesStore } from "@/modules/settings/preferences";
+import { invoke } from "@tauri-apps/api/core";
 import {
   historyFinish,
   historyRecord,
@@ -54,7 +55,18 @@ function outputTail(term: Terminal): string {
   return lines.join("\n");
 }
 
+// DIAGNOSTIC (temporary): why no correction showed.
+function debug(message: string) {
+  void invoke("history_debug", { message }).catch(() => {});
+}
+
 function draw(p: Pane, offer: Offer | null) {
+  if (offer?.fix) {
+    const b = p.term?.buffer.active;
+    debug(
+      `draw fix=${JSON.stringify(offer.draw)} term=${!!p.term} buf=${b?.type} x=${b?.cursorX} cols=${p.term?.cols}`,
+    );
+  }
   clear(p);
   const term = p.term;
   if (!term || !offer?.draw) return;
@@ -74,8 +86,16 @@ function draw(p: Pane, offer: Offer | null) {
     layer: "top",
   });
   if (!decoration) {
+    if (offer.fix) debug("draw: registerDecoration returned nothing");
     marker.dispose();
     return;
+  }
+  if (offer.fix) {
+    decoration.onRender((el) =>
+      debug(
+        `rendered fix: class=${el.className} w=${el.style.width} h=${el.style.height} color=${getComputedStyle(el).color} vis=${getComputedStyle(el).visibility}`,
+      ),
+    );
   }
   decoration.onRender((el) => {
     el.textContent = text;
@@ -111,7 +131,17 @@ function paneFor(leafId: number): Pane {
           command,
           exit,
           isFailure(exit) && pane.term ? outputTail(pane.term) : "",
-        ),
+        ).then((fix) => {
+          debug(`finish exit=${exit} fix=${JSON.stringify(fix)}`);
+          setTimeout(
+            () =>
+              debug(
+                `after finish: visible=${JSON.stringify(pane.engine.visible())} state=${JSON.stringify(pane.engine.debugState())}`,
+              ),
+            0,
+          );
+          return fix;
+        }),
       show: (offer) => draw(pane, offer),
     }),
   };

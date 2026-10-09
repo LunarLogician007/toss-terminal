@@ -480,6 +480,18 @@ mod tests {
     }
 
     #[test]
+    fn fixes_git_from_what_the_terminal_holds() {
+        // The pane's last lines when `git psuh` failed under Powerlevel10k:
+        // the tab before "push" is spaces in the terminal's buffer.
+        let out = "  ~ ····························  base ─╮\n❯ git psuh                                  ─╯\ngit: 'psuh' is not a git command. See 'git --help'.\n\nThe most similar command is\n        push\n";
+        assert_eq!(hint_from_output(out), Some(strings(&["push"])));
+        assert_eq!(
+            fresh_fix("git psuh", Some(1), out, |_| true, |_| None),
+            Some("git push".into())
+        );
+    }
+
+    #[test]
     fn a_tools_hint_fixes_its_subcommand() {
         let out = "The most similar command is\n\tpush\n";
         assert_eq!(

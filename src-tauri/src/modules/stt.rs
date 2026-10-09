@@ -132,13 +132,11 @@ pub fn remove_legacy_models(app: &AppHandle) {
 
 /// Little-endian f32 samples, as a `Float32Array`'s bytes arrive.
 pub fn samples_from_le_bytes(bytes: &[u8]) -> Result<Vec<f32>, String> {
-    if bytes.len() % 4 != 0 {
+    let (samples, rest) = bytes.as_chunks::<4>();
+    if !rest.is_empty() {
         return Err("the audio isn't whole 32-bit samples".into());
     }
-    Ok(bytes
-        .chunks_exact(4)
-        .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
-        .collect())
+    Ok(samples.iter().map(|&c| f32::from_le_bytes(c)).collect())
 }
 
 /// Consecutive sample ranges of at most `max` covering `len` samples.
@@ -818,8 +816,10 @@ mod engine_tests {
             let len = u32::from_le_bytes(bytes[i + 4..i + 8].try_into().unwrap()) as usize;
             if id == b"data" {
                 return bytes[i + 8..(i + 8 + len).min(bytes.len())]
-                    .chunks_exact(2)
-                    .map(|c| i16::from_le_bytes([c[0], c[1]]) as f32 / 32768.0)
+                    .as_chunks::<2>()
+                    .0
+                    .iter()
+                    .map(|&c| i16::from_le_bytes(c) as f32 / 32768.0)
                     .collect();
             }
             i += 8 + len + (len & 1);

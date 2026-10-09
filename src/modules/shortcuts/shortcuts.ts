@@ -437,7 +437,7 @@ export const SHORTCUTS: Shortcut[] = [
   },
   {
     id: "view.zenMode",
-    label: "Toggle zen mode",
+    label: "Show or hide the top and status bars",
     group: "View",
     defaultBindings: [{ [MOD_PROP]: true, shift: true, key: "'" }],
   },
@@ -507,7 +507,7 @@ function keyFromCode(code: string): string | null {
 export function matchBinding(
   e: KeyboardEvent,
   binding: KeyBinding,
-  id?: ShortcutId
+  id?: ShortcutId,
 ): boolean {
   const eventKey = e.key.toLowerCase();
   const bindingKey = binding.key.toLowerCase();

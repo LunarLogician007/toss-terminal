@@ -2,7 +2,7 @@
 //
 // Ghostty's approach (`background-blur`): a transparent window plus a plain
 // background blur from the window server, with no tinted material. An
-// NSVisualEffectView material (what upstream TOSS Terminal uses) reads as a nearly
+// NSVisualEffectView material (what the original used) reads as a nearly
 // solid window background, which is not the see-through look this is for.
 use serde::Serialize;
 
@@ -74,6 +74,49 @@ fn set_backdrop(window: &tauri::Window, enabled: bool) -> Result<(), String> {
 #[cfg(not(target_os = "macos"))]
 fn set_backdrop(_window: &tauri::Window, _enabled: bool) -> Result<(), String> {
     Ok(())
+}
+
+/// Hide or show macOS's close, minimise and zoom buttons. With the top bar
+/// hidden they would sit on the terminal's first line; the keys (Cmd+W,
+/// Cmd+M, Cmd+Q) still work.
+#[tauri::command]
+pub fn window_set_buttons_hidden(window: tauri::Window, hidden: bool) -> Result<(), String> {
+    set_buttons_hidden(&window, hidden)
+}
+
+#[cfg(target_os = "macos")]
+fn set_buttons_hidden(window: &tauri::Window, hidden: bool) -> Result<(), String> {
+    let ns_window = window.ns_window().map_err(|e| e.to_string())? as usize;
+    window
+        .run_on_main_thread(move || buttons::set_hidden(ns_window, hidden))
+        .map_err(|e| e.to_string())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn set_buttons_hidden(_window: &tauri::Window, _hidden: bool) -> Result<(), String> {
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+mod buttons {
+    use objc2::msg_send;
+    use objc2::runtime::AnyObject;
+
+    /// NSWindowCloseButton, NSWindowMiniaturizeButton, NSWindowZoomButton.
+    const KINDS: [usize; 3] = [0, 1, 2];
+
+    pub fn set_hidden(ns_window: usize, hidden: bool) {
+        if ns_window == 0 {
+            return;
+        }
+        let window: &AnyObject = unsafe { &*(ns_window as *const AnyObject) };
+        for kind in KINDS {
+            let button: *mut AnyObject = unsafe { msg_send![window, standardWindowButton: kind] };
+            if let Some(button) = unsafe { button.as_ref() } {
+                let _: () = unsafe { msg_send![button, setHidden: hidden] };
+            }
+        }
+    }
 }
 
 #[cfg(test)]

@@ -247,6 +247,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             vibrancy::window_backdrop_kind,
             vibrancy::window_set_backdrop,
+            vibrancy::window_set_buttons_hidden,
             stt::stt_model_status,
             stt::stt_download_model,
             stt::stt_remove_model,

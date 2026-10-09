@@ -1,15 +1,13 @@
-import { type ReactNode, useEffect, useRef, useState } from "react";
+// Modified for TOSS Terminal, 2026: no motion; the title bar drags the window.
+
 import { cn } from "@/lib/utils";
+import type { ReactNode } from "react";
 import type { Rect } from "./lib/layout";
 
 type Props = {
   rect: Rect;
-  /** Start here and animate to `rect` once mounted; null starts at `rect`. */
-  from: Rect | null;
-  animate: boolean;
   hidden: boolean;
   focused: boolean;
-  ghost: boolean;
   titleBar: boolean;
   dim: boolean;
   title: string;
@@ -19,75 +17,58 @@ type Props = {
   children?: ReactNode;
 };
 
-const TRANSITION =
-  "left var(--dur-base) var(--ease-premium), top var(--dur-base) var(--ease-premium), width var(--dur-base) var(--ease-premium), height var(--dur-base) var(--ease-premium), opacity var(--dur-base) var(--ease-premium)";
-
 /**
- * One pane drawn as a tuios-style window: rounded frame, a thin title bar
- * with close and zoom dots, and the accent colour when focused.
+ * One pane drawn as a tuios-style window: a frame, a thin title bar with
+ * close and zoom marks, and the accent colour when focused. The title bar
+ * also moves the window, as there is no other title bar to grab.
  */
 export function TileWindow(props: Props) {
-  const { rect, from, animate, hidden, focused, ghost, titleBar, dim } = props;
-  // Two frames at `from` before moving to `rect`, so the browser has a
-  // starting point to transition from.
-  // The starting rect is fixed at mount: a re-render before the first paint
-  // must not skip the entry.
-  const start = useRef(from).current;
-  const [entered, setEntered] = useState(start === null);
-  useEffect(() => {
-    if (entered) return;
-    let inner = 0;
-    const outer = requestAnimationFrame(() => {
-      inner = requestAnimationFrame(() => setEntered(true));
-    });
-    return () => {
-      cancelAnimationFrame(outer);
-      cancelAnimationFrame(inner);
-    };
-  }, [entered]);
-
-  const at = entered || !start ? rect : start;
+  const { rect, hidden, focused, titleBar, dim } = props;
   return (
     <div
       className={cn(
-        "absolute flex flex-col overflow-hidden rounded-[var(--radius-lg)] border bg-background",
+        "absolute flex flex-col overflow-hidden border bg-background",
         focused ? "border-[var(--sidebar-primary)]" : "border-border",
-        (hidden || ghost) && "pointer-events-none",
+        hidden && "pointer-events-none",
       )}
       style={{
-        left: at.x,
-        top: at.y,
-        width: at.width,
-        height: at.height,
+        left: rect.x,
+        top: rect.y,
+        width: rect.width,
+        height: rect.height,
         opacity: hidden ? 0 : 1,
-        transition: animate ? TRANSITION : "none",
       }}
       data-tile-focused={focused || undefined}
     >
       {titleBar && (
         <div
+          data-tauri-drag-region
           className={cn(
-            "flex h-6 shrink-0 select-none items-center gap-2 border-b px-2 text-[11px]",
+            "flex h-5 shrink-0 select-none items-center gap-2 border-b px-1.5 font-mono text-[11px]",
             focused
               ? "border-[var(--sidebar-primary)]/40 text-[var(--sidebar-primary)]"
               : "border-border text-muted-foreground",
           )}
         >
-          <span className="flex items-center gap-1">
-            <button
-              type="button"
-              aria-label="Close pane"
-              onClick={props.onClose}
-              className="size-2.5 rounded-full bg-red-500/80 hover:bg-red-500"
-            />
-            <button
-              type="button"
-              aria-label="Zoom pane"
-              onClick={props.onZoom}
-              className="size-2.5 rounded-full bg-emerald-500/80 hover:bg-emerald-500"
-            />
-          </span>
-          <span className="min-w-0 flex-1 truncate font-mono">
+          <button
+            type="button"
+            aria-label="Close pane"
+            title="Close pane"
+            onClick={props.onClose}
+            className="hover:text-foreground"
+          >
+            [x]
+          </button>
+          <button
+            type="button"
+            aria-label="Zoom pane"
+            title="Zoom pane"
+            onClick={props.onZoom}
+            className="hover:text-foreground"
+          >
+            [z]
+          </button>
+          <span data-tauri-drag-region className="min-w-0 flex-1 truncate">
             {props.title}
           </span>
           {props.badge}
@@ -95,10 +76,7 @@ export function TileWindow(props: Props) {
       )}
       <div
         className="relative min-h-0 flex-1"
-        style={{
-          opacity: dim && !focused && !ghost ? 0.85 : 1,
-          transition: animate ? "opacity var(--dur-base)" : "none",
-        }}
+        style={{ opacity: dim && !focused ? 0.85 : 1 }}
       >
         {props.children}
       </div>

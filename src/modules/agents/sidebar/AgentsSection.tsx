@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { postMessage } from "@/modules/messages/lib/messages";
-import { agentEvents, agentMessage } from "./agentEvents";
 import { cn } from "@/lib/utils";
 import { useAgentStore } from "@/modules/agents/store/agentStore";
+import { postMessage } from "@/modules/messages/lib/messages";
 import type { Tab } from "@/modules/tabs/lib/useTabs";
 import { useAgentActivityStore } from "@/modules/terminal/lib/agentActivity";
 import { ptyIdForLeaf } from "@/modules/terminal/lib/useTerminalSession";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { agentEvents, agentMessage } from "./agentEvents";
 import {
   type AgentFilter,
   type AgentRow,
@@ -64,18 +64,22 @@ export function AgentsSection({ tabs, activeTabId, onJump }: Props) {
     filter === "you" ? all.filter((r) => r.state === "attention") : all;
   const waiting = all.filter((r) => r.state === "attention").length;
 
-  // Elapsed times tick once a second, only while one is on screen.
+  // Elapsed times tick once a second, only while one is on screen (not with
+  // the sidebar closed, where the section is still mounted at zero width).
   const ticking = !collapsed && rows.some((r) => r.since !== null);
   const [now, setNow] = useState(() => Date.now());
+  const sectionRef = useRef<HTMLElement>(null);
   useEffect(() => {
     if (!ticking) return;
     setNow(Date.now());
-    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    const id = window.setInterval(() => {
+      if ((sectionRef.current?.offsetWidth ?? 0) > 0) setNow(Date.now());
+    }, 1000);
     return () => window.clearInterval(id);
   }, [ticking]);
 
   // TOSS Terminal: an agent that starts needing input, or finishes its turn,
-  // says so in the top bar's message line (click jumps to its pane).
+  // says so in the message line (click jumps to its pane).
   const seen = useRef<Map<number, AgentRowState> | null>(null);
   useEffect(() => {
     const prev = seen.current;
@@ -95,7 +99,10 @@ export function AgentsSection({ tabs, activeTabId, onJump }: Props) {
   if (all.length === 0) return null;
 
   return (
-    <section className="shrink-0 border-t border-border/60 px-1.5 pb-1.5 pt-1 font-mono text-[11.5px] leading-5">
+    <section
+      ref={sectionRef}
+      className="shrink-0 border-t border-border/60 px-1.5 pb-1.5 pt-1 font-mono text-[11.5px] leading-5"
+    >
       <div className="flex items-center gap-2 px-1 text-muted-foreground">
         <button
           type="button"

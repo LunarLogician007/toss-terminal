@@ -12,7 +12,6 @@ describe("tiling preferences", () => {
       tilingGap: 6,
       tilingTitleBars: true,
       tilingDimUnfocused: true,
-      tilingAnimations: true,
     });
   });
 

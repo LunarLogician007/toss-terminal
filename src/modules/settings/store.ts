@@ -1,13 +1,14 @@
 // Modified for TOSS Terminal (tuios-style tiling), 2026.
-import type { PrefixKey } from "@/modules/tiling/lib/prefix";
+
+import { translucentByDefault } from "@/lib/platformDefaults";
 import {
   type AgentLaunchCommands,
   DEFAULT_AGENT_LAUNCH_COMMANDS,
   normalizeAgentLaunchCommands,
 } from "@/modules/agents/lib/launcher";
-import { translucentByDefault } from "@/lib/platformDefaults";
 import { coercePreset, type PresetId } from "@/modules/shortcuts/presetIds";
 import type { KeyBinding, ShortcutId } from "@/modules/shortcuts/shortcuts";
+import type { PrefixKey } from "@/modules/tiling/lib/prefix";
 import { emit, listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { LazyStore } from "@tauri-apps/plugin-store";
 
@@ -151,7 +152,6 @@ export type Preferences = {
   tilingGap: number;
   tilingTitleBars: boolean;
   tilingDimUnfocused: boolean;
-  tilingAnimations: boolean;
   windowTranslucent: boolean;
   windowOpacity: number;
 };
@@ -229,7 +229,6 @@ const KEY_SHORTCUT_PRESET = "shortcutPreset";
 const KEY_TILING_GAP = "tilingGap";
 const KEY_TILING_TITLE_BARS = "tilingTitleBars";
 const KEY_TILING_DIM_UNFOCUSED = "tilingDimUnfocused";
-const KEY_TILING_ANIMATIONS = "tilingAnimations";
 const KEY_WINDOW_TRANSLUCENT = "windowTranslucent";
 const KEY_WINDOW_OPACITY = "windowOpacity";
 
@@ -318,7 +317,6 @@ export const DEFAULT_PREFERENCES: Preferences = {
   tilingGap: 6,
   tilingTitleBars: true,
   tilingDimUnfocused: true,
-  tilingAnimations: true,
   windowTranslucent: translucentByDefault(
     typeof navigator === "undefined" ? "" : navigator.platform,
   ),
@@ -385,7 +383,9 @@ export async function loadPreferences(): Promise<Preferences> {
     terminalWebglEnabled:
       get<boolean>(KEY_TERMINAL_WEBGL_ENABLED) ??
       DEFAULT_PREFERENCES.terminalWebglEnabled,
-    terminalSuggestions: coerceSuggestions(get<unknown>(KEY_TERMINAL_SUGGESTIONS)),
+    terminalSuggestions: coerceSuggestions(
+      get<unknown>(KEY_TERMINAL_SUGGESTIONS),
+    ),
     terminalCursorBlink:
       get<boolean>(KEY_TERMINAL_CURSOR_BLINK) ??
       DEFAULT_PREFERENCES.terminalCursorBlink,
@@ -457,9 +457,6 @@ export async function loadPreferences(): Promise<Preferences> {
     tilingDimUnfocused:
       get<boolean>(KEY_TILING_DIM_UNFOCUSED) ??
       DEFAULT_PREFERENCES.tilingDimUnfocused,
-    tilingAnimations:
-      get<boolean>(KEY_TILING_ANIMATIONS) ??
-      DEFAULT_PREFERENCES.tilingAnimations,
     windowTranslucent:
       get<boolean>(KEY_WINDOW_TRANSLUCENT) ??
       DEFAULT_PREFERENCES.windowTranslucent,
@@ -504,10 +501,6 @@ export async function setTilingTitleBars(value: boolean): Promise<void> {
 
 export async function setTilingDimUnfocused(value: boolean): Promise<void> {
   await writePref(KEY_TILING_DIM_UNFOCUSED, value);
-}
-
-export async function setTilingAnimations(value: boolean): Promise<void> {
-  await writePref(KEY_TILING_ANIMATIONS, value);
 }
 
 export async function setWindowTranslucent(value: boolean): Promise<void> {
@@ -785,7 +778,6 @@ export async function onPreferencesChange(
     [KEY_TILING_GAP]: "tilingGap",
     [KEY_TILING_TITLE_BARS]: "tilingTitleBars",
     [KEY_TILING_DIM_UNFOCUSED]: "tilingDimUnfocused",
-    [KEY_TILING_ANIMATIONS]: "tilingAnimations",
     [KEY_WINDOW_TRANSLUCENT]: "windowTranslucent",
     [KEY_WINDOW_OPACITY]: "windowOpacity",
   };

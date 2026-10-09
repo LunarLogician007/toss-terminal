@@ -1,3 +1,8 @@
+export {
+  readChromeShown,
+  saveChromeShown,
+  setWindowButtonsHidden,
+} from "./chrome";
 export { Header } from "./Header";
 export {
   SearchInline,

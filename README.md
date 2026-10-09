@@ -10,15 +10,19 @@ TOSS Terminal is built on Tauri 2, Rust and React. It has a fast xterm.js
 terminal, file explorer, Markdown viewer, code editor, web preview and source
 control, and:
 
-- **tuios-style tiling**: panes place themselves (BSP), with gaps, title bars
-  and animations; a `Ctrl+B` prefix drives them (`|` and `-` split, arrows
+- **A terminal-only window**: no top bar, status bar or sidebar until you ask
+  for them. `Cmd+Shift+'` shows the bars, `Cmd+B` the sidebar, and the
+  command palette (`Cmd+P`) has everything else: tabs, Spaces, dictation, git.
+  Monospace, square corners, no blur, shadows or animations.
+- **tuios-style tiling**: panes place themselves (BSP), with gaps and title
+  bars (drag one to move the window); a `Ctrl+B` prefix drives them (`|` and `-` split, arrows
   move, `z` zoom, `x` close, `?` lists every key).
 - **Spaces** for grouping tabs, and an **agents list** in the sidebar that
   tracks Claude Code, Codex and others running in your terminals ("works on a
   turn", "user input needed").
 - **A see-through window** with macOS blur, at an opacity you choose.
-- **A message line** in the top bar for copies, pastes, closed panes and
-  agents needing you.
+- **A message line** for copies, pastes, closed panes and agents needing you,
+  shown top right while there is one.
 - **Keybinding presets**: Custom, iTerm2 or Ghostty pane keys.
 - **Command corrections**, like Warp: when a command fails, its fix is
   offered at the next prompt (`→` takes it). Fixes come from what you
@@ -28,8 +32,9 @@ control, and:
   Learned locally, in a small file in the app's data folder.
 - **Local dictation**: Cactus Compute's [Whistle](https://huggingface.co/Cactus-Compute/whistle)
   (16.9 MB, Apache-2.0) runs on the CPU inside the app, typed into the
-  terminal as you speak. Nothing leaves your computer. Turn it on with **mic**
-  in the status bar, then `Ctrl+B Ctrl+Space`. Apple Silicon Macs and Linux
+  terminal as you speak. Nothing leaves your computer. Turn it on with
+  **Dictation: turn on** in the command palette (or **mic** in the status
+  bar), then `Ctrl+B Ctrl+Space`. Apple Silicon Macs and Linux
   (x86-64, arm64); not yet on Windows or Intel Macs.
 
 ## Install

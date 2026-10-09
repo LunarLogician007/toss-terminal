@@ -218,6 +218,7 @@ pinned to revision `b358ddad` of `Cactus-Compute/whistle`.
 - **Cleanup:** the old `ggml-*.bin` files are deleted on startup.
 - **Settings:** the model picker is gone (one model); the preference
   `sttBuiltinModel` is no longer read.
-- **CI:** `fork-build` runs the real engine on the real model: on macOS it
-  transcribes a `say` clip and checks the words, on Linux it loads the model
-  and transcribes silence and a 45 s clip.
+- **CI:** `fork-build` runs the real engine on the real model on macOS and
+  Linux: a recorded clip (`src-tauri/tests/fixtures/dictation.wav`) must come
+  back with "git status" and "tiling settings", silence must give nothing,
+  and a 45 s clip must be chunked, not refused.

@@ -137,7 +137,7 @@ mod needle {
                 Some((version, e.path().join("lib")))
             })
             .collect();
-        llvm.sort_by(|a, b| b.0.cmp(&a.0));
+        llvm.sort_by_key(|(version, _)| std::cmp::Reverse(*version));
         llvm.into_iter()
             .map(|(_, d)| d)
             .chain(["/usr/lib/x86_64-linux-gnu", "/usr/lib/aarch64-linux-gnu", "/usr/lib"].map(PathBuf::from))

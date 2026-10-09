@@ -42,18 +42,14 @@ jobs:
       - name: Test dictation, migration and agent detection
         working-directory: src-tauri
         run: cargo test --release --lib -- stt::tests migrate::tests agent_detect::tests
-      - name: Fetch the Whistle model and record a spoken clip
+      - name: Fetch the Whistle model
         run: |
           curl --fail --location --silent --show-error --retry 3 -o "$RUNNER_TEMP/whistle.cact" "$WHISTLE_URL"
           echo "$WHISTLE_SHA256  $RUNNER_TEMP/whistle.cact" | shasum -a 256 -c
-          say -o "$RUNNER_TEMP/clip.aiff" "Please run git status and then open the tiling settings."
-          afconvert -f WAVE -d LEI16@16000 -c 1 "$RUNNER_TEMP/clip.aiff" "$RUNNER_TEMP/clip.wav"
       - name: Transcribe with the real engine
         working-directory: src-tauri
         env:
           WHISTLE_MODEL: ${{ runner.temp }}/whistle.cact
-          WHISTLE_WAV: ${{ runner.temp }}/clip.wav
-          WHISTLE_EXPECT: git status tiling settings
         run: cargo test --release --lib stt::engine_tests -- --ignored --nocapture
       - name: Measure the app
         working-directory: src-tauri/target/release/bundle/macos
@@ -107,7 +103,7 @@ jobs:
         run: |
           curl --fail --location --silent --show-error --retry 3 -o "$RUNNER_TEMP/whistle.cact" "$WHISTLE_URL"
           echo "$WHISTLE_SHA256  $RUNNER_TEMP/whistle.cact" | sha256sum -c
-      - name: Load and run the real engine
+      - name: Transcribe with the real engine
         working-directory: src-tauri
         env:
           WHISTLE_MODEL: ${{ runner.temp }}/whistle.cact

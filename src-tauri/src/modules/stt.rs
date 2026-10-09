@@ -795,8 +795,8 @@ mod tests {
 }
 
 /// The real engine on the real model. Run in CI with `--ignored`, given
-/// WHISTLE_MODEL (the .cact) and optionally WHISTLE_WAV (16 kHz mono 16-bit)
-/// with WHISTLE_EXPECT (words that must be heard).
+/// WHISTLE_MODEL (the .cact). The speech clip is a recorded fixture, so the
+/// test doesn't depend on the runner having voices.
 #[cfg(all(test, needle))]
 mod engine_tests {
     use super::*;
@@ -851,13 +851,14 @@ mod engine_tests {
 
     #[test]
     #[ignore]
-    fn speech_is_heard() {
-        let (Ok(wav), Ok(expect)) = (std::env::var("WHISTLE_WAV"), std::env::var("WHISTLE_EXPECT"))
-        else {
-            eprintln!("WHISTLE_WAV / WHISTLE_EXPECT not set; skipped");
-            return;
-        };
-        let samples = read_wav(Path::new(&wav));
+    fn speech_is_heard_with_terminal_words() {
+        // "Please run git status and then open the tiling settings." Without
+        // keyword biasing Whistle hears "git" as "deep".
+        let wav = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/dictation.wav");
+        let samples = read_wav(&wav);
+        let peak = samples.iter().fold(0.0f32, |m, s| m.max(s.abs()));
+        eprintln!("clip: {} samples, peak {peak:.3}", samples.len());
+        assert!(samples.len() > SAMPLE_RATE && peak > 0.05);
         let segs = engine::transcribe(&MODELS[0], &model(), &samples).unwrap();
         let heard = segs
             .iter()
@@ -865,7 +866,7 @@ mod engine_tests {
             .collect::<Vec<_>>()
             .join(" ");
         eprintln!("heard: {heard}");
-        for w in expect.split_whitespace() {
+        for w in ["git", "status", "tiling", "settings"] {
             assert!(heard.contains(&w.to_lowercase()), "missing {w:?} in {heard:?}");
         }
         assert!(segs.windows(2).all(|p| p[0].end_ms <= p[1].start_ms));

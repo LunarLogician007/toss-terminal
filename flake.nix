@@ -1,5 +1,5 @@
 {
-  description = "TOSS Terminal - a lightweight tiling terminal workspace, based on Terax";
+  description = "TOSS Terminal - a lightweight tiling terminal workspace";
 
   inputs.nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
 

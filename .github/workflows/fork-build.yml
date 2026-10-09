@@ -39,9 +39,9 @@ jobs:
       - run: pnpm test
       - name: Build the unsigned app
         run: pnpm tauri build --bundles app --no-sign
-      - name: Test dictation, history, migration and agent detection
+      - name: Test dictation, history and agent detection
         working-directory: src-tauri
-        run: cargo test --release --lib -- stt::tests migrate::tests agent_detect::tests modules::history
+        run: cargo test --release --lib -- stt::tests agent_detect::tests modules::history
       - name: Fetch the Whistle model
         run: |
           curl --fail --location --silent --show-error --retry 3 -o "$RUNNER_TEMP/whistle.cact" "$WHISTLE_URL"
@@ -96,9 +96,9 @@ jobs:
       - run: pnpm test
       - name: Build the .deb
         run: pnpm tauri build --bundles deb
-      - name: Test dictation, history, migration and agent detection
+      - name: Test dictation, history and agent detection
         working-directory: src-tauri
-        run: cargo test --release --lib -- stt::tests migrate::tests agent_detect::tests modules::history
+        run: cargo test --release --lib -- stt::tests agent_detect::tests modules::history
       - name: Fetch the Whistle model
         run: |
           curl --fail --location --silent --show-error --retry 3 -o "$RUNNER_TEMP/whistle.cact" "$WHISTLE_URL"

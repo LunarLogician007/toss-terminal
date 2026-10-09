@@ -1,6 +1,6 @@
-# Terax Tiling, project 3: agents section in the sidebar
+# TOSS Terminal, project 3: agents section in the sidebar
 
-Date: 2026-10-04 · Branch: `tuios-tiling-v086` (Terax 0.8.6) · Status: approved in conversation
+Date: 2026-10-04 · Branch: `tuios-tiling-v086` (0.8.6) · Status: approved in conversation
 
 ## Goal
 
@@ -8,12 +8,12 @@ A tuios-style list of the coding agents running in terminal panes (Claude Code,
 Codex, Gemini CLI, …), pinned at the bottom of the sidebar, so you can see at a
 glance which ones are working, which need you, and jump to any of them.
 
-Not in scope: Terax's built-in AI agents, tuios's `@` agent-mail filter.
+Not in scope: the original's built-in AI agents, tuios's `@` agent-mail filter.
 
 ## Data (no new detection)
 
 - `useAgentActivityStore` — per PTY: agent name (`agents`) and phase
-  (`working | attention | finished | idle`), from Terax's OSC 777 detector.
+  (`working | attention | finished | idle`), from the original's OSC 777 detector.
 - `useAgentStore.sessions` — per pane: `startedAt`, `attentionSince`.
 - `ptyIdForLeaf(leafId)` maps a pane to its PTY.
 
@@ -36,17 +36,17 @@ agent runs. Monospace, terminal-style:
 
 ```
 agents   all · you                 »
-▎◐ claude   terax › 1         2m
+▎◐ claude   toss › 1         2m
  ● codex    api › 2     needs you
 ```
 
 Glyphs and colours follow tuios: ◐ working (blue), ● needs you (amber, with an
 amber gutter bar), ✓ finished (green), ○ idle (muted). The focused pane's row
 has a `▎` gutter in the primary colour. The header collapses the list.
-Clicking a row calls Terax's `activateAgentTarget(tabId, leafId)` (switches
+Clicking a row calls the original's `activateAgentTarget(tabId, leafId)` (switches
 Space if needed). Elapsed time updates every second while a row needs it.
 
-Finished rows stay green until Terax's own finished→idle timeout turns them
+Finished rows stay green until the original's own finished→idle timeout turns them
 idle (tuios's separate "seen" state is not reproduced).
 
 ## Files

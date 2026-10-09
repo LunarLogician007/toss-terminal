@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
-import { GithubIcon, Globe02Icon } from "@hugeicons/core-free-icons";
-// Modified for TOSS Terminal, 2026: fork identity and upstream credit; the
+import { GithubIcon } from "@hugeicons/core-free-icons";
+// Modified for TOSS Terminal, 2026: fork identity and copyright; the
 // updater is gone (builds are installed by hand).
 import { HugeiconsIcon } from "@hugeicons/react";
 import { getName, getVersion } from "@tauri-apps/api/app";
@@ -10,8 +10,6 @@ import { useEffect, useState } from "react";
 import { SectionHeader } from "../components/SectionHeader";
 
 const REPO_URL = "https://github.com/LunarLogician007/toss-terminal";
-// TOSS Terminal is a fork of Terax (Apache-2.0); the credit stays visible.
-const UPSTREAM_URL = "https://github.com/crynta/terax-ai";
 
 const PLATFORM_LABEL: Record<string, string> = {
   macos: "macOS",
@@ -50,7 +48,7 @@ export function AboutSection() {
             {name}
           </span>
           <span className="text-[11px] text-muted-foreground">
-            A tiling terminal, based on Terax
+            A tiling terminal
           </span>
           <span className="mt-1 font-mono text-[11px] text-muted-foreground">
             v{version || "—"}
@@ -81,17 +79,8 @@ export function AboutSection() {
             LunarLogician007/toss-terminal
           </button>
         </dd>
-        <dt className="text-muted-foreground">Based on</dt>
-        <dd>
-          <button
-            type="button"
-            onClick={() => void openUrl(UPSTREAM_URL)}
-            className="inline-flex items-center gap-1.5 rounded-md text-[12px] underline-offset-2 hover:text-foreground hover:underline"
-          >
-            <HugeiconsIcon icon={Globe02Icon} size={12} strokeWidth={1.75} />
-            Terax by crynta (Apache 2.0)
-          </button>
-        </dd>
+        <dt className="text-muted-foreground">Copyright</dt>
+        <dd>Crynta and TOSS Terminal contributors</dd>
       </dl>
 
       <div className="flex flex-col gap-1.5">

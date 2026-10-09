@@ -10,8 +10,6 @@ const DEFAULT_AGENTS: &[&str] = &["claude", "codex", "gemini", "pi", "opencode",
 // OSC 777 marker our agent hooks emit. Legacy 3-field `notify;TOSS;<event>`
 // (Claude) or 4-field `notify;TOSS;<agent>;<event>` (Codex/Gemini/Pi).
 const TOSS_MARKER: &[u8] = b"notify;TOSS;";
-// The same marker from hooks installed before the rename, or by stock Terax.
-const LEGACY_MARKER: &[u8] = b"notify;Terax;";
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum State {
@@ -163,10 +161,7 @@ impl AgentDetector {
     }
 
     fn handle_osc777<F: FnMut(Transition)>(&mut self, pt: &[u8], emit: &mut F) {
-        if let Some(tail) = pt
-            .strip_prefix(TOSS_MARKER)
-            .or_else(|| pt.strip_prefix(LEGACY_MARKER))
-        {
+        if let Some(tail) = pt.strip_prefix(TOSS_MARKER) {
             // PTY output is untrusted: only self-arm for known agents.
             let (agent, event) = match tail.iter().position(|&c| c == b';') {
                 Some(i) => {
@@ -339,16 +334,6 @@ mod tests {
         run(&mut d, &osc("133;C;claude"));
         assert!(run(&mut d, &[BEL]).is_empty());
         assert!(run(&mut d, b"thinking...\x07more").is_empty());
-    }
-
-    #[test]
-    fn accepts_the_marker_hooks_installed_by_terax() {
-        // Hooks installed before the rename (or by stock Terax) still print
-        // the old marker; they must keep working.
-        let mut d = AgentDetector::new();
-        run(&mut d, &osc("133;C;claude"));
-        assert_eq!(run(&mut d, &osc("777;notify;Terax;attention")), vec![Transition::Attention]);
-        assert_eq!(run(&mut d, &osc("777;notify;Terax;working")), vec![Transition::Working]);
     }
 
     #[test]

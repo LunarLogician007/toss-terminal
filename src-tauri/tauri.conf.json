@@ -37,7 +37,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "copyright": "Copyright 2026 Crynta (Terax) and TOSS Terminal contributors",
+    "copyright": "Copyright 2026 Crynta and TOSS Terminal contributors",
     "license": "Apache-2.0",
     "publisher": "TOSS Terminal",
     "icon": [
@@ -85,7 +85,7 @@
     },
     "category": "DeveloperTool",
     "shortDescription": "Lightweight tiling terminal",
-    "longDescription": "TOSS Terminal — a lightweight tiling terminal workspace with a file explorer, Markdown viewer, code editor, web preview, source control and local dictation. Based on Terax by crynta (Apache-2.0).",
+    "longDescription": "TOSS Terminal — a lightweight tiling terminal workspace with a file explorer, Markdown viewer, code editor, web preview, source control and local dictation. Apache-2.0.",
     "fileAssociations": [
       {
         "name": "TOSS Terminal Document",

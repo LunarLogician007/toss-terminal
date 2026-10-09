@@ -1,11 +1,11 @@
-# Terax Tiling, project 2: see-through window and terminal-style sidebar
+# TOSS Terminal, project 2: see-through window and terminal-style sidebar
 
 Date: 2026-10-04 · Branch: `tuios-tiling-v086` · Status: approved in conversation
 
 ## Window
 - `tauri.conf.json`: main window `transparent`, `app.macOSPrivateApi`.
 - Cargo: tauri feature `macos-private-api`; `window-vibrancy = "0.8"` (macOS).
-- `src-tauri/src/modules/vibrancy.rs`: upstream Terax's module trimmed to macOS
+- `src-tauri/src/modules/vibrancy.rs`: the original's module trimmed to macOS
   (`window_backdrop_kind`, `window_set_backdrop` → NSVisualEffectMaterial
   UnderWindowBackground). Not App-Store compatible (private API).
 

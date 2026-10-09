@@ -6,10 +6,9 @@
 
 ---
 
-TOSS Terminal is a fork of [Terax](https://github.com/crynta/terax-ai) by
-crynta (Apache-2.0), built on Tauri 2, Rust and React. It keeps Terax's fast
-xterm.js terminal, file explorer, Markdown viewer, code editor, web preview
-and source control, and adds:
+TOSS Terminal is built on Tauri 2, Rust and React. It has a fast xterm.js
+terminal, file explorer, Markdown viewer, code editor, web preview and source
+control, and:
 
 - **tuios-style tiling**: panes place themselves (BSP), with gaps, title bars
   and animations; a `Ctrl+B` prefix drives them (`|` and `-` split, arrows
@@ -33,8 +32,6 @@ and source control, and adds:
   in the status bar, then `Ctrl+B Ctrl+Space`. Apple Silicon Macs and Linux
   (x86-64, arm64); not yet on Windows or Intel Macs.
 
-The built-in AI assistant from Terax is not included.
-
 ## Install
 
 Builds come from GitHub Actions (`fork-build`): download the
@@ -42,8 +39,6 @@ Builds come from GitHub Actions (`fork-build`): download the
 `~/Applications`, and open it. The app is unsigned, so macOS may ask you to
 confirm the first launch.
 
-Coming from a "Terax Tiling" build? Your settings, Spaces and themes are
-copied over on first launch. Whisper models from earlier builds are deleted;
 Whistle downloads the first time you turn dictation on.
 
 ## Build from source
@@ -65,6 +60,6 @@ dictation.
 
 ## License
 
-Apache-2.0, like Terax. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
-Original copyright notices are kept; files changed from upstream carry a
-"Modified for TOSS Terminal" note.
+Apache-2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE). Original copyright
+notices are kept; files changed from the original carry a "Modified for TOSS
+Terminal" note.

@@ -1,20 +1,20 @@
-# tuios Tiling for Terax: Implementation Plan
+# tuios Tiling for TOSS Terminal: Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: use
 > superpowers:subagent-driven-development (recommended) or
 > superpowers:executing-plans to carry out this plan task by task. Steps use
 > checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Terminal tabs in terax tile like tuios. New terminals are placed by
+**Goal:** Terminal tabs in the original tile like tuios. New terminals are placed by
 BSP; panes are drawn as windows with gaps, rounded corners and title bars;
 open, close, swap and zoom are animated; and a Ctrl+B prefix drives the keys.
 
-**Architecture:** terax's `PaneNode` tree stays the model and gains split
+**Architecture:** the original's `PaneNode` tree stays the model and gains split
 `sizes`. Pure functions in `src/modules/tiling/lib/` cover BSP placement,
 pixel layout, resizing, tab operations and the prefix state machine.
 `TiledLayout` replaces the nested resizable panels with a flat list of
 absolutely positioned `TileWindow`s, keyed by leaf ID. While an animation
-runs, terax's existing terminal-resize-interaction guard holds terminals at
+runs, the original's existing terminal-resize-interaction guard holds terminals at
 their old size, so each one is refitted once at the end.
 
 **Tech stack:** React 19, TypeScript, zustand, vitest, Tailwind, Tauri 2.
@@ -35,12 +35,12 @@ their old size, so each one is refitted once at the end.
 - Animation timing uses `var(--dur-base)` and `var(--ease-premium)`.
   Animations turn off under `prefers-reduced-motion: reduce` or when the
   Animations setting is off.
-- terax's existing `MAX_PANES_PER_TAB = 4` stays in force. A split past it is
+- the original's existing `MAX_PANES_PER_TAB = 4` stays in force. A split past it is
   refused with a toast.
-- Spaces saved by stock terax (no `sizes`) must load unchanged.
+- Spaces saved by the original (no `sizes`) must load unchanged.
 - Every edited upstream file gets the header comment
-  `// Modified for Terax Tiling (tuios-style tiling), 2026.`
-- Tests follow terax's own pattern: vitest, node environment, pure logic, no
+  `// Modified for TOSS Terminal (tuios-style tiling), 2026.`
+- Tests follow the original's own pattern: vitest, node environment, pure logic, no
   DOM test library. Rendering behaviour is checked in the built app.
 - Every task finishes with `pnpm test`, `pnpm check-types` and `pnpm lint`
   green. Lint must have 0 errors; the baseline has 90 warnings that were
@@ -54,7 +54,7 @@ spell out. Each has a test in the task named after the arrow.
 1. **Shift pressed before a capital letter while the prefix is armed.**
    Pressing Shift (to type `H`) must not cancel the prefix → Task 5,
    "modifier-only keys keep the prefix armed".
-2. **A Space saved by stock terax, or with corrupted `sizes`.** It must load
+2. **A Space saved by the original, or with corrupted `sizes`.** It must load
    with equal splits, not crash or skew → Task 4,
    "drops sizes of the wrong length or with bad values".
 3. **Closing a pane in a split that has custom sizes.** The remaining panes
@@ -292,7 +292,7 @@ export function swapLeafInDirection(
 }
 ```
 
-Add the "Modified for Terax Tiling" header at the top of `panes.ts`.
+Add the "Modified for TOSS Terminal" header at the top of `panes.ts`.
 
 - [ ] **Step 4: Run.** `pnpm vitest run src/modules/terminal/lib/panes.test.ts`
   passes, then `pnpm test`, `pnpm check-types` and `pnpm lint`.
@@ -772,7 +772,7 @@ describe("split sizes", () => {
     expect(tree.sizes![1]).toBeCloseTo(0.3);
   });
 
-  it("loads stock-terax data with no sizes as equal splits", () => {
+  it("loads the original data with no sizes as equal splits", () => {
     const stock: SerializedTab[] = [{
       kind: "terminal",
       tree: { kind: "split", dir: "row", children: [{ kind: "leaf" }, { kind: "leaf" }] },
@@ -1662,7 +1662,7 @@ const onTilingAction = useCallback((a: TilingAction) => {
 }, [/* the callbacks used */]);
 ```
 
-  Use the `toast` import that terax already uses elsewhere (find it with
+  Use the `toast` import that the original already uses elsewhere (find it with
   `grep -rn "from \"sonner\"" src`).
 
   `TilingSection.tsx` follows `GeneralSection.tsx`'s row components:
@@ -1673,7 +1673,7 @@ const onTilingAction = useCallback((a: TilingAction) => {
   Each control calls the matching setter from Task 6.
 
   `TilingHelp.tsx` is a small dialog listing the table from the spec's
-  section 3.5, opened by `?` and closed by Esc. Use terax's existing dialog
+  section 3.5, opened by `?` and closed by Esc. Use the original's existing dialog
   component; find it with `grep -rn "components/ui/dialog" src | head -1`.
 
 - [ ] **Step 4: Run** the shortcut tests and the full checks.
@@ -1692,8 +1692,8 @@ const onTilingAction = useCallback((a: TilingAction) => {
 - [ ] **Step 1: Write `NOTICE`.**
 
 ```
-Terax Tiling
-A modified fork of Terax (https://github.com/crynta/terax-ai), Apache-2.0.
+TOSS Terminal
+A modified fork of the original, Apache-2.0.
 Modifications (2026): tuios-style tiling for terminal tabs: BSP placement,
 window look, animations and a Ctrl+B keyboard layer. Original copyright
 notices are kept in LICENSE and in the source files.
@@ -1725,17 +1725,17 @@ jobs:
       - name: Build unsigned app (fork identity, no updater)
         run: >
           pnpm tauri build --bundles app --no-sign --config
-          '{"identifier":"app.crynta.terax.tiling","productName":"Terax Tiling",
+          '{"identifier":"app.toss.terminal","productName":"TOSS Terminal",
           "bundle":{"createUpdaterArtifacts":false},
           "plugins":{"updater":{"active":false,"endpoints":[]}}}'
       - name: Zip the app
         run: |
           cd src-tauri/target/release/bundle/macos
-          ditto -c -k --keepParent "Terax Tiling.app" terax-tiling-macos.zip
+          ditto -c -k --keepParent "TOSS Terminal.app" toss-terminal-macos.zip
       - uses: actions/upload-artifact@v7
         with:
-          name: terax-tiling-macos
-          path: src-tauri/target/release/bundle/macos/terax-tiling-macos.zip
+          name: toss-terminal-macos
+          path: src-tauri/target/release/bundle/macos/toss-terminal-macos.zip
 ```
 
   Before relying on this, check that the action versions match those used in
@@ -1754,12 +1754,12 @@ jobs:
 
 - [ ] **Step 5: GitHub (needs the user's go-ahead).** Ask before creating the
   fork. Once approved:
-  - `gh repo fork crynta/terax-ai --clone=false`;
+  - fork the original repository on GitHub;
   - add the fork as the `fork` remote;
   - `git push fork tuios-tiling`;
   - watch the run with `gh run watch`;
-  - `gh run download -n terax-tiling-macos` into `~/Applications`;
+  - `gh run download -n toss-terminal-macos` into `~/Applications`;
   - unzip it and clear the quarantine flag (`xattr -dr com.apple.quarantine`);
   - launch it, then check the animations, that each change causes one PTY
-    resize (terax's terminal diagnostics), and idle and animating CPU against
-    stock terax.
+    resize (the original's terminal diagnostics), and idle and animating CPU against
+    the original.

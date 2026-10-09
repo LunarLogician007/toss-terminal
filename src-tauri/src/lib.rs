@@ -172,10 +172,6 @@ pub fn run() {
         }
     }
 
-    // TOSS Terminal: carry the Terax Tiling build's data over to the new
-    // identifier's folders before anything (stores, webview) opens them.
-    modules::migrate::run_once();
-
     let launch = parse_launch_target();
     let cli_dir = launch.dir.clone();
     workspace::init_launch_cwd(cli_dir.as_deref());

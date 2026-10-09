@@ -1,6 +1,6 @@
 # TOSS.md
 
-TOSS Terminal's living architecture doc. Read it before making changes. (Upstream Terax also loaded this file as its AI assistant's memory; that assistant isn't part of TOSS Terminal.)
+TOSS Terminal's living architecture doc. Read it before making changes.
 
 ## Project
 

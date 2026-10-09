@@ -5,7 +5,6 @@ pub mod history;
 #[cfg(target_os = "linux")]
 pub mod linux_media;
 pub mod lsp;
-pub mod migrate;
 pub mod proc;
 pub mod pty;
 pub mod shell;

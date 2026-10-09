@@ -5,7 +5,6 @@ import {
   DEFAULT_AGENT_LAUNCH_COMMANDS,
   normalizeAgentLaunchCommands,
 } from "@/modules/agents/lib/launcher";
-import { legacyThemeId } from "@/lib/legacyStorage";
 import { translucentByDefault } from "@/lib/platformDefaults";
 import { coercePreset, type PresetId } from "@/modules/shortcuts/presetIds";
 import type { KeyBinding, ShortcutId } from "@/modules/shortcuts/shortcuts";
@@ -348,10 +347,7 @@ export async function loadPreferences(): Promise<Preferences> {
   const get = <T>(k: string): T | undefined => map.get(k) as T | undefined;
   return {
     theme: get<ThemePref>(KEY_THEME) ?? DEFAULT_PREFERENCES.theme,
-    // Theme ids were "terax-…" before the TOSS Terminal rename.
-    themeId: legacyThemeId(
-      get<string>(KEY_THEME_ID) ?? DEFAULT_PREFERENCES.themeId,
-    ),
+    themeId: get<string>(KEY_THEME_ID) ?? DEFAULT_PREFERENCES.themeId,
     backgroundKind:
       get<BackgroundKind>(KEY_BG_KIND) ?? DEFAULT_PREFERENCES.backgroundKind,
     backgroundImageId:

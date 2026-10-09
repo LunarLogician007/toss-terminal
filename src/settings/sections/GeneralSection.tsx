@@ -249,7 +249,7 @@ export function GeneralSection() {
         {/* TOSS Terminal: fish-style suggestions in any shell. */}
         <SettingRow
           title="Command suggestions"
-          description="Grey suggestions from your history as you type; → takes it, Ctrl+→ one word. Auto stays off when your shell already suggests (zsh-autosuggestions, fish)."
+          description="Grey suggestions from your history as you type; → takes it, Ctrl+→ one word. When a command fails, its fix is offered at the next prompt (→ takes it), and commands that only ever failed are no longer suggested. Auto keeps history suggestions off when your shell already suggests (zsh-autosuggestions, fish); fixes still show."
         >
           <Select
             value={terminalSuggestions}

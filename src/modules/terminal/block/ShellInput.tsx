@@ -8,6 +8,7 @@ import {
   getLeafDraft,
   leafGridSelection,
   setLeafDraft,
+  setLeafFixOffer,
   setLeafInputActivity,
   setLeafInputFocus,
 } from "../lib/useTerminalSession";
@@ -109,6 +110,7 @@ export default function ShellInput({
   // tabs land with the cursor already in the input.
   useEffect(() => {
     setLeafInputFocus(leafId, () => handleRef.current?.focus());
+    setLeafFixOffer(leafId, (text) => handleRef.current?.offerFix(text));
     handleRef.current?.setValue(getLeafDraft(leafId));
     requestAnimationFrame(() => {
       if (focusableRef.current && leafIdRef.current === leafId) {
@@ -120,6 +122,7 @@ export default function ShellInput({
       setLeafDraft(leafId, value);
       setLeafInputActivity(leafId, value.length > 0);
       setLeafInputFocus(leafId, null);
+      setLeafFixOffer(leafId, null);
     };
   }, [leafId]);
 

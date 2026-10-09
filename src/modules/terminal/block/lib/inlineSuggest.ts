@@ -8,34 +8,40 @@ import {
   type ViewUpdate,
   WidgetType,
 } from "@codemirror/view";
+import { type Offer, offerFor } from "@/modules/terminal/suggest/engine";
+import type { Suggestion } from "./history";
 
-const setSuggestion = StateEffect.define<string>();
+const setSuggestion = StateEffect.define<Suggestion | null>();
 
-const suggestionField = StateField.define<string>({
-  create: () => "",
+const suggestionField = StateField.define<Suggestion | null>({
+  create: () => null,
   update(value, tr) {
     for (const e of tr.effects) if (e.is(setSuggestion)) return e.value;
-    if (tr.docChanged) {
-      if (!value) return value;
+    if (tr.docChanged && value) {
+      // Kept only while it continues what's typed; a correction that
+      // replaces the line is fetched again for the new text.
       const doc = tr.state.doc.toString();
-      return doc.length > 0 && value.startsWith(doc) && value.length > doc.length
+      return value.text.length > doc.length && value.text.startsWith(doc)
         ? value
-        : "";
+        : null;
     }
     return value;
   },
 });
 
 class GhostWidget extends WidgetType {
-  constructor(private readonly text: string) {
+  constructor(
+    private readonly text: string,
+    private readonly fix: boolean,
+  ) {
     super();
   }
   eq(other: GhostWidget) {
-    return other.text === this.text;
+    return other.text === this.text && other.fix === this.fix;
   }
   toDOM() {
     const span = document.createElement("span");
-    span.className = "cm-ghost";
+    span.className = this.fix ? "cm-ghost cm-ghost-fix" : "cm-ghost";
     span.textContent = this.text;
     return span;
   }
@@ -44,25 +50,25 @@ class GhostWidget extends WidgetType {
   }
 }
 
-function tail(state: EditorView["state"]): string | null {
+function offer(state: EditorView["state"]): Offer | null {
   const sugg = state.field(suggestionField, false);
   if (!sugg) return null;
   const sel = state.selection.main;
   if (!sel.empty || sel.head !== state.doc.length) return null;
   const doc = state.doc.toString();
-  if (doc.length === 0) return null;
-  if (!sugg.startsWith(doc) || sugg.length <= doc.length) return null;
-  return sugg.slice(doc.length);
+  // An empty line shows only a correction offered after a failure.
+  if (doc.length === 0 && !sugg.fix) return null;
+  return offerFor(doc, sugg);
 }
 
 const ghostDecorations = EditorView.decorations.compute(
   [suggestionField, "doc", "selection"],
   (state): DecorationSet => {
-    const t = tail(state);
-    if (t === null) return Decoration.none;
+    const o = offer(state);
+    if (o === null) return Decoration.none;
     return Decoration.set([
       Decoration.widget({
-        widget: new GhostWidget(t),
+        widget: new GhostWidget(o.draw, o.fix),
         side: 1,
       }).range(state.doc.length),
     ]);
@@ -70,17 +76,25 @@ const ghostDecorations = EditorView.decorations.compute(
 );
 
 export function acceptInlineSuggestion(view: EditorView): boolean {
-  const t = tail(view.state);
-  if (t === null) return false;
+  const o = offer(view.state);
+  if (o === null) return false;
+  const end = view.state.doc.length;
+  const from = o.replace ? 0 : end;
   view.dispatch({
-    changes: { from: view.state.doc.length, insert: t },
-    selection: { anchor: view.state.doc.length + t.length },
-    effects: setSuggestion.of(""),
+    changes: { from, to: end, insert: o.text },
+    selection: { anchor: from + o.text.length },
+    effects: setSuggestion.of(null),
   });
   return true;
 }
 
-function fetcherPlugin(fetch: (line: string) => Promise<string | null>) {
+/** Offer the correction of a command that just failed, on an empty input. */
+export function offerFix(view: EditorView, text: string): void {
+  if (view.state.doc.length > 0) return;
+  view.dispatch({ effects: setSuggestion.of({ text, fix: true }) });
+}
+
+function fetcherPlugin(fetch: (line: string) => Promise<Suggestion | null>) {
   return ViewPlugin.fromClass(
     class {
       private timer: ReturnType<typeof setTimeout> | null = null;
@@ -90,6 +104,9 @@ function fetcherPlugin(fetch: (line: string) => Promise<string | null>) {
         const view = update.view;
         const line = view.state.doc.toString();
         if (!line) return;
+        // A correction still being typed out stays; history waits.
+        const kept = view.state.field(suggestionField, false);
+        if (kept?.fix) return;
         this.timer = setTimeout(() => {
           if (view.state.doc.toString() !== line) return;
           fetch(line)
@@ -108,7 +125,9 @@ function fetcherPlugin(fetch: (line: string) => Promise<string | null>) {
   );
 }
 
-export function inlineSuggestion(fetch: (line: string) => Promise<string | null>) {
+export function inlineSuggestion(
+  fetch: (line: string) => Promise<Suggestion | null>,
+) {
   return [
     suggestionField,
     ghostDecorations,

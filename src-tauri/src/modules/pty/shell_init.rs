@@ -148,6 +148,11 @@ fn apply_common(cmd: &mut CommandBuilder, cwd: Option<String>, blocks: bool) {
     if blocks {
         cmd.env("TOSS_BLOCKS", "1");
     }
+    // Commands that only ever failed, for the zsh integration to keep out of
+    // zsh-autosuggestions.
+    if let Some(path) = crate::modules::history::failed_list_path() {
+        cmd.env("TOSS_FAILED_COMMANDS", path);
+    }
     for (key, value) in workspace::appimage_env_overrides() {
         match value {
             Some(v) => {

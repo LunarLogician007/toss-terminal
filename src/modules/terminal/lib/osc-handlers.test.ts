@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { Terminal } from "@xterm/xterm";
 import {
   createShellIntegrationState,
+  parseExitStatus,
   registerCwdHandler,
   registerOsc52ClipboardHandler,
   registerPromptTracker,
@@ -143,6 +144,30 @@ describe("OSC 133 command-state tracking", () => {
     expect(onCommandState).toHaveBeenLastCalledWith(true);
     handlers.get(133)?.("A");
     expect(onCommandState).toHaveBeenLastCalledWith(false);
+  });
+
+  it("passes on the command's text from C and its exit status from D", () => {
+    const { term, handlers } = makeFakeTerm();
+    const onStart = vi.fn();
+    const onEnd = vi.fn();
+    registerPromptTracker(term, undefined, undefined, { onStart, onEnd });
+
+    handlers.get(133)?.("C;git psuh");
+    expect(onStart).toHaveBeenLastCalledWith("git psuh");
+    handlers.get(133)?.("D;1");
+    expect(onEnd).toHaveBeenLastCalledWith(1);
+    handlers.get(133)?.("C"); // bash names no command
+    expect(onStart).toHaveBeenLastCalledWith("");
+    handlers.get(133)?.("D");
+    expect(onEnd).toHaveBeenLastCalledWith(null);
+  });
+
+  it("reads exit statuses, and nothing from junk", () => {
+    expect(parseExitStatus("D;0")).toBe(0);
+    expect(parseExitStatus("D;127")).toBe(127);
+    expect(parseExitStatus("D;-1")).toBe(-1);
+    expect(parseExitStatus("D")).toBeNull();
+    expect(parseExitStatus("D;x")).toBeNull();
   });
 });
 

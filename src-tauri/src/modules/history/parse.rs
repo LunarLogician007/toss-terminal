@@ -161,14 +161,15 @@ pub fn sort_recent(v: &mut [HistEntry]) {
     v.sort_by(|a, b| b.last.cmp(&a.last).then(b.count.cmp(&a.count)));
 }
 
-// fish-style autosuggestion: the most recent full command that extends `line`.
-pub fn suggest(index: &[HistEntry], line: &str) -> Option<String> {
+// fish-style autosuggestion: the most recent full command that extends `line`,
+// leaving out the ones `skip` rules out (commands that only ever failed).
+pub fn suggest(index: &[HistEntry], line: &str, skip: impl Fn(&str) -> bool) -> Option<String> {
     if line.is_empty() {
         return None;
     }
     index
         .iter()
-        .filter(|e| e.cmd.len() > line.len() && e.cmd.starts_with(line))
+        .filter(|e| e.cmd.len() > line.len() && e.cmd.starts_with(line) && !skip(&e.cmd))
         .max_by(|a, b| a.last.cmp(&b.last).then(a.count.cmp(&b.count)))
         .map(|e| e.cmd.clone())
 }
@@ -180,10 +181,11 @@ pub fn complete_commands(
     path_cmds: &[String],
     prefix: &str,
     limit: usize,
+    skip: impl Fn(&str) -> bool,
 ) -> Vec<String> {
     use std::collections::{HashMap, HashSet};
     let mut freq: HashMap<&str, u32> = HashMap::new();
-    for e in index {
+    for e in index.iter().filter(|e| !skip(&e.cmd)) {
         let w = e.cmd.split_whitespace().next().unwrap_or("");
         if !w.is_empty() && w.starts_with(prefix) {
             *freq.entry(w).or_insert(0) += e.count;
@@ -305,9 +307,20 @@ mod tests {
             ("git stash".into(), 99),
             ("git push".into(), 50),
         ]);
-        assert_eq!(suggest(&idx, "git st"), Some("git stash".into()));
-        assert_eq!(suggest(&idx, "git status"), None); // exact, nothing longer
-        assert_eq!(suggest(&idx, ""), None);
+        let none = |_: &str| false;
+        assert_eq!(suggest(&idx, "git st", none), Some("git stash".into()));
+        assert_eq!(suggest(&idx, "git status", none), None); // exact, nothing longer
+        assert_eq!(suggest(&idx, "", none), None);
+    }
+
+    #[test]
+    fn suggest_skips_commands_that_only_failed() {
+        let idx = build_index(vec![
+            ("git push".into(), 10),
+            ("git psuh".into(), 20),
+        ]);
+        let failed = |c: &str| c == "git psuh";
+        assert_eq!(suggest(&idx, "git p", failed), Some("git push".into()));
     }
 
     #[test]
@@ -330,12 +343,15 @@ mod tests {
             ("git status".into(), 10),
             ("git status".into(), 11),
             ("grep x".into(), 5),
+            ("gti x".into(), 12),
         ]);
         let path = vec!["git".to_string(), "gzip".to_string(), "grep".to_string()];
-        let got = complete_commands(&idx, &path, "g", 10);
+        let got = complete_commands(&idx, &path, "g", 10, |c| c == "gti x");
         // "git" (count 2) ranks before "grep" (count 1); PATH-only "gzip" last.
         assert_eq!(got[0], "git");
         assert_eq!(got[1], "grep");
         assert!(got.contains(&"gzip".to_string()));
+        // A typo that only ever failed isn't offered as a command.
+        assert!(!got.contains(&"gti".to_string()));
     }
 }

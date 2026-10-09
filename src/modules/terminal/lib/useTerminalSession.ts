@@ -16,11 +16,14 @@ import {
   type BlockMatch,
   type VisibleBlocks,
 } from "../block/lib/blockDecorations";
+import { historyFinish, isFailure } from "../block/lib/history";
 import type { BlockMode } from "../block/lib/modeMachine";
 import { DormantRing } from "./dormantRing";
 import {
   attachSuggestions,
   disposeSuggestions,
+  suggestCommandFinished,
+  suggestCommandStarted,
   suggestPromptState,
 } from "@/modules/terminal/suggest";
 import {
@@ -90,6 +93,10 @@ type Session = {
   // Set by the block shell-input; called to pull focus back when the xterm
   // grid steals it at the prompt (e.g. on a click), so typing stays in the bar.
   inputFocus: (() => void) | null;
+  // TOSS Terminal: the Blocks command now running, as submitted, and the
+  // input's hook for offering its correction if it fails.
+  lastSubmitted: string | null;
+  offerFix: ((text: string) => void) | null;
   // Per-leaf unsent shell-input text; the single workspace bar swaps it on focus change.
   inputDraft: string;
   // Live "input has text" flag from the block shell-input (gates the watermark).
@@ -174,6 +181,7 @@ export function submitToLeaf(leafId: number, text: string): void {
   const s = sessions.get(leafId);
   if (!s || s.shellExited) return;
   s.everSubmitted = true;
+  s.lastSubmitted = text;
   // Bracketed paste keeps a multiline command atomic; trailing CR runs it.
   const data = text.includes("\n")
     ? `\x1b[200~${text}\x1b[201~\r`
@@ -230,6 +238,34 @@ export function setLeafInputFocus(
 ): void {
   const s = sessions.get(leafId);
   if (s) s.inputFocus = fn;
+}
+
+export function setLeafFixOffer(
+  leafId: number,
+  fn: ((text: string) => void) | null,
+): void {
+  const s = sessions.get(leafId);
+  if (s) s.offerFix = fn;
+}
+
+/** A Blocks command ended: learn from it, and offer its fix if it failed. */
+function blockFinished(
+  leafId: number,
+  s: Session,
+  exit: number | null,
+  output: () => string,
+): void {
+  const command = s.lastSubmitted;
+  s.lastSubmitted = null;
+  if (!command) return;
+  void historyFinish(
+    leafId,
+    command,
+    exit,
+    isFailure(exit) ? output() : "",
+  ).then((fix) => {
+    if (fix && s.blockMode === "prompt" && !s.inputActive) s.offerFix?.(fix);
+  });
 }
 
 export function focusLeafInput(leafId: number): void {
@@ -472,6 +508,8 @@ function ensureSession(
     blockListeners: new Set(),
     blockDecorations: null,
     inputFocus: null,
+    lastSubmitted: null,
+    offerFix: null,
     inputDraft: "",
     inputActive: false,
     everSubmitted: false,
@@ -628,6 +666,7 @@ function bindLeafToSlot(leafId: number, s: Session): void {
             const set = blockViewportListeners.get(leafId);
             if (set) for (const l of set) l();
           },
+          onFinish: (exit, output) => blockFinished(leafId, s, exit, output),
         });
         s.blockDecorations = deco;
         const onGridFocus = () => {
@@ -648,10 +687,18 @@ function bindLeafToSlot(leafId: number, s: Session): void {
       // 7 emitted by untrusted command output (remote SSH, `cat` of an
       // attacker file, etc.).
       const shellState = createShellIntegrationState();
-      const prompt = registerPromptTracker(term, shellState, (running) => {
-        suggestPromptState(leafId, running);
-        onLeafCommandState(leafId, running);
-      });
+      const prompt = registerPromptTracker(
+        term,
+        shellState,
+        (running) => {
+          suggestPromptState(leafId, running);
+          onLeafCommandState(leafId, running);
+        },
+        {
+          onStart: (command) => suggestCommandStarted(leafId, command),
+          onEnd: (exit) => suggestCommandFinished(leafId, exit),
+        },
+      );
       // TOSS Terminal: grey command suggestions at the prompt.
       const suggestions = attachSuggestions(leafId, term);
       const cwd = registerCwdHandler(

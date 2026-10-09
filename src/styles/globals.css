@@ -502,3 +502,14 @@ html[data-translucent="on"] .xterm .xterm-screen {
   overflow: hidden;
   pointer-events: none;
 }
+
+/* A correction of a command that failed: tinted (the terminal theme's
+   yellow) so it reads as a fix, not history. */
+.toss-suggestion-fix,
+.cm-ghost.cm-ghost-fix {
+  color: var(--terminal-ansi-yellow, var(--muted-foreground));
+  opacity: 0.85;
+}
+.cm-ghost.cm-ghost-fix::after {
+  content: none;
+}

@@ -72,6 +72,11 @@ export type BlockDecorationsOptions = {
   onCwd?: (cwd: string) => void;
   onMode?: (mode: BlockMode) => void;
   onViewport?: () => void;
+  /**
+   * A command finished (TOSS Terminal: command corrections). `output` reads
+   * what it printed, for a failure's error and hint.
+   */
+  onFinish?: (exit: number | null, output: () => string) => void;
 };
 
 export class BlockDecorations {
@@ -89,6 +94,7 @@ export class BlockDecorations {
   private readonly onCwd?: (cwd: string) => void;
   private readonly onMode?: (mode: BlockMode) => void;
   private readonly onViewport?: () => void;
+  private readonly onFinish?: BlockDecorationsOptions["onFinish"];
   private viewportRaf: number | null = null;
 
   constructor(
@@ -98,6 +104,7 @@ export class BlockDecorations {
     this.onCwd = opts?.onCwd;
     this.onMode = opts?.onMode;
     this.onViewport = opts?.onViewport;
+    this.onFinish = opts?.onFinish;
     this.term.options.cursorInactiveStyle = "none";
     const osc133 = term.parser.registerOscHandler(133, (data) => {
       this.onOsc133(data);
@@ -526,6 +533,11 @@ export class BlockDecorations {
       if (old) this.disposeEntry(old);
     }
     this.scheduleViewport();
+    const startMarker = lb.startMarker;
+    this.onFinish?.(exit, () => {
+      const r = computeRange(startMarker, endMarker);
+      return r ? readRangeText(this.term, r.start, r.end) : "";
+    });
   }
 
   private disposeEntry(e: Entry): void {

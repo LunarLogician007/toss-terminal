@@ -13,6 +13,8 @@ export type InputResult = {
   state: LineState;
   /** The line that was run by an Enter in this input, when it was known. */
   submitted?: string;
+  /** Enter was pressed (whether or not the line was known). */
+  entered?: boolean;
 };
 
 const PASTE_START = "\x1b[200~";
@@ -52,6 +54,7 @@ function escapeLength(s: string): number {
 export function applyInput(start: LineState, data: string): InputResult {
   let { text, certain } = start;
   let submitted: string | undefined;
+  let entered = false;
   let i = 0;
   while (i < data.length) {
     const rest = data.slice(i);
@@ -78,6 +81,7 @@ export function applyInput(start: LineState, data: string): InputResult {
     switch (ch) {
       case "\r":
       case "\n":
+        entered = true;
         if (certain && text.trim()) submitted = text;
         text = "";
         certain = true;
@@ -107,5 +111,5 @@ export function applyInput(start: LineState, data: string): InputResult {
         else if (certain) text += ch;
     }
   }
-  return { state: { text, certain }, submitted };
+  return { state: { text, certain }, submitted, entered };
 }

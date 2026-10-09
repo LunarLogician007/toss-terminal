@@ -369,12 +369,6 @@ pub fn history_finish(
         }
         Verdict::Neither => None,
     };
-    // DIAGNOSTIC (temporary): why no correction showed.
-    log::info!(
-        "history_finish pane={pane} exit={exit:?} verdict={verdict:?} output_bytes={} hint={:?} fix={offer:?}",
-        output.len(),
-        fixes::hint_from_output(output),
-    );
     drop(failures);
     drop(learned_guard);
     drop(index);
@@ -382,12 +376,6 @@ pub fn history_finish(
         schedule_save(&app, &state);
     }
     offer
-}
-
-/// DIAGNOSTIC (temporary): a line from the frontend into the app log.
-#[tauri::command]
-pub fn history_debug(message: String) {
-    log::info!("suggest: {}", tail(&message, 2000));
 }
 
 #[tauri::command]

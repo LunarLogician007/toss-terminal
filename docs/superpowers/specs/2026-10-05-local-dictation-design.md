@@ -1,5 +1,9 @@
 # Local dictation — design
 
+> **Superseded in part (2026-10-09):** the engine is now Cactus Compute's
+> Whistle, not Whisper. See "Whistle" at the end; the rest describes the
+> original Whisper design.
+
 Terax Tiling, branch `tuios-tiling-v086`. 2026-10-05.
 
 ## What it is
@@ -181,3 +185,39 @@ and the AI chat's mic with "Built-in".
   macOS runner has). This adds to build time.
 - **Accuracy:** tiny.en is fine for clear speech and short commands, and
   weaker with accents, jargon or noise; base.en is the fix, one setting away.
+
+## Whistle (2026-10-09)
+
+Whisper (whisper.cpp, tiny.en / base.en) is replaced by Cactus Compute's
+**Whistle**: one model, `whistle.cact`, 16,919,407 bytes, SHA-256
+`b6e02f048568ac5d01a2042556c658061e699acbc0aa2a1439f52f3d461dffeb`, Apache-2.0,
+pinned to revision `b358ddad` of `Cactus-Compute/whistle`.
+
+- **Engine:** Cactus's Needle engine, which ships only as a prebuilt static
+  library per platform (`Cactus-Compute/needle3`, revision `2ae11323`).
+  `build.rs` downloads `libneedle.a` for the target, checks its SHA-256,
+  links it (plus libc++: the system one on macOS, static on Linux) and sets
+  `cfg(needle)`. `NEEDLE_LIB_DIR` points at a local copy for offline builds.
+  No cmake, no whisper.cpp compile.
+- **Platforms:** Apple Silicon Macs, Linux x86-64 and arm64. Windows' build is
+  MinGW (can't link with MSVC) and there is no Intel Mac build: there the
+  commands answer "isn't available on this platform yet" and Settings says so.
+- **Speed:** about 10-30 ms a pass on an M-series CPU (Whisper took hundreds);
+  live passes stay 300 ms apart.
+- **Memory:** about 45 MB once loaded. The engine has no unload, so the model
+  stays until the app quits; the mic switch no longer frees memory, and
+  Settings → Remove frees disk only.
+- **Context:** Whistle takes no text prompt. Instead every pass biases toward
+  terminal words (git, pnpm, cd, ls, sudo, cargo, docker, ...), which fixes
+  "git" heard as "deep" without changing ordinary speech.
+- **Phrases:** Whistle returns words with times; `stt.rs` groups them into
+  phrases at punctuation and pauses of 200 ms or more, so live dictation still
+  trims typed audio at natural breaks.
+- **Over 30 s:** Whistle reads 30 s a pass; longer audio goes in 30 s chunks.
+- **Language:** English, as before (Whistle also knows de, fr, es, it, nl, pl).
+- **Cleanup:** the old `ggml-*.bin` files are deleted on startup.
+- **Settings:** the model picker is gone (one model); the preference
+  `sttBuiltinModel` is no longer read.
+- **CI:** `fork-build` runs the real engine on the real model: on macOS it
+  transcribes a `say` clip and checks the words, on Linux it loads the model
+  and transcribes silence and a 45 s clip.

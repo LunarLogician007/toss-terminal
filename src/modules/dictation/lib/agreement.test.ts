@@ -61,12 +61,12 @@ describe("stepAgreement", () => {
     expect(d.commit).toEqual(["push"]);
   });
 
-  it("drops Whisper's markers before comparing", () => {
+  it("drops non-speech markers before comparing", () => {
     const a = stepAgreement(EMPTY_AGREEMENT, [seg("[BLANK_AUDIO]", 0, 1000)]);
     expect(a.tail).toEqual([]);
   });
 
-  it("keeps the context prompt to the typed words", () => {
+  it("records the typed words", () => {
     let s = stepAgreement(EMPTY_AGREEMENT, [seg("git commit", 0, 900)]).state;
     s = stepAgreement(s, [seg("git commit dash", 0, 1500)]).state;
     expect(s.typed).toEqual(["git", "commit"]);

@@ -15,18 +15,16 @@ function setup(over: Partial<DictationDeps> = {}) {
   const posts: MessageInput[] = [];
   const pasted: [number, string][] = [];
   const timers: { fn: () => void; ms: number; live: boolean }[] = [];
-  const prompts: string[] = [];
   const trims: number[] = [];
   const script: Seg[][] = [];
   let ready = true;
   let cancelled = 0;
   const loads: string[] = [];
-  let unloads = 0;
   let loadFails = false;
   let pending: (() => void) | null = null;
   let holdNext = false;
   const deps: DictationDeps = {
-    model: () => "tiny.en",
+    model: () => "whistle",
     keys: () => "Ctrl+B Ctrl+Space",
     modelReady: async () => ready,
     download: async (_m, onPct) => {
@@ -38,9 +36,6 @@ function setup(over: Partial<DictationDeps> = {}) {
       if (loadFails) throw new Error("out of memory");
       loads.push(m);
     },
-    unload: async () => {
-      unloads++;
-    },
     startMic: async () => ({
       snapshot: () => new Float32Array(16_000),
       trim: (ms) => trims.push(ms),
@@ -49,8 +44,7 @@ function setup(over: Partial<DictationDeps> = {}) {
         cancelled++;
       },
     }),
-    transcribeLive: (_m, _samples, prompt) => {
-      prompts.push(prompt);
+    transcribeLive: () => {
       const out = script.shift() ?? [];
       if (!holdNext) return Promise.resolve(out);
       holdNext = false;
@@ -95,14 +89,12 @@ function setup(over: Partial<DictationDeps> = {}) {
     d,
     on,
     loads,
-    unloads: () => unloads,
     failLoad: () => {
       loadFails = true;
     },
     deps,
     posts,
     pasted,
-    prompts,
     trims,
     script,
     fire,
@@ -157,7 +149,7 @@ describe("live dictation", () => {
     expect(t.d.phase()).toBe("idle");
   });
 
-  it("gives Whisper the typed words as context, and passes trims to the mic", async () => {
+  it("passes trims to the mic", async () => {
     const t = setup();
     t.script.push(
       [seg("git status.", 1000), seg(" then push", 2000)],
@@ -169,8 +161,6 @@ describe("live dictation", () => {
     await t.fire(PASS_MS);
     await t.fire(PASS_MS);
     expect(t.trims).toEqual([1000]);
-    await t.fire(PASS_MS);
-    expect(t.prompts).toEqual(["", "", "git status. then"]);
   });
 
   it("never runs two passes at once", async () => {
@@ -265,13 +255,13 @@ describe("live dictation", () => {
     t.setReady(false);
     await t.d.setEnabled(true);
     expect(t.posts.map((p) => p.text)).toEqual([
-      "Downloading the speech model (32 MB): 0%.",
-      "Downloading the speech model (32 MB): 50%.",
-      "Downloading the speech model (32 MB): 100%.",
+      "Downloading the speech model (17 MB): 0%.",
+      "Downloading the speech model (17 MB): 50%.",
+      "Downloading the speech model (17 MB): 100%.",
       "Loading the speech model…",
       "Dictation on. Ctrl+B Ctrl+Space to dictate.",
     ]);
-    expect(t.loads).toEqual(["tiny.en"]);
+    expect(t.loads).toEqual(["whistle"]);
     expect(t.d.enabled()).toBe(true);
     expect(t.d.phase()).toBe("idle");
   });
@@ -324,18 +314,17 @@ describe("the dictation switch", () => {
     expect(t.loads).toEqual([]);
   });
 
-  it("on loads the model and keeps it; off unloads it", async () => {
+  it("on loads the model; off turns dictation off", async () => {
     const t = setup();
     await t.d.setEnabled(true);
-    expect(t.loads).toEqual(["tiny.en"]);
+    expect(t.loads).toEqual(["whistle"]);
     expect(t.last()).toMatchObject({
       text: "Dictation on. Ctrl+B Ctrl+Space to dictate.",
       kind: "success",
     });
     await t.d.setEnabled(false);
-    expect(t.unloads()).toBe(1);
     expect(t.d.enabled()).toBe(false);
-    expect(t.last()?.text).toBe("Dictation off. Memory freed.");
+    expect(t.last()?.text).toBe("Dictation off.");
   });
 
   it("switching off mid-dictation stops listening first", async () => {
@@ -345,7 +334,29 @@ describe("the dictation switch", () => {
     await t.d.setEnabled(false);
     expect(t.cancelled()).toBe(1);
     expect(t.d.phase()).toBe("idle");
-    expect(t.unloads()).toBe(1);
+  });
+
+  it("a platform without the engine stays off, with the reason, and downloads nothing", async () => {
+    let downloads = 0;
+    const t = setup({
+      modelReady: async () => {
+        throw new Error(
+          "Built-in dictation isn't available on this platform yet.",
+        );
+      },
+      download: async () => {
+        downloads++;
+      },
+    });
+    await t.d.setEnabled(true);
+    expect(t.d.enabled()).toBe(false);
+    expect(t.d.switching()).toBe(false);
+    expect(downloads).toBe(0);
+    expect(t.loads).toEqual([]);
+    expect(t.last()).toMatchObject({
+      text: "Built-in dictation isn't available on this platform yet.",
+      kind: "error",
+    });
   });
 
   it("a model that won't load leaves it off, with the reason", async () => {

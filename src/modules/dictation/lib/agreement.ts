@@ -1,6 +1,6 @@
 import { cleanTranscript } from "./text";
 
-/** One phrase from Whisper, with times relative to the audio it was given. */
+/** One phrase heard, with times relative to the audio it was given. */
 export type Seg = { text: string; startMs: number; endMs: number };
 
 /**
@@ -13,7 +13,7 @@ export type AgreementState = {
   prev: string[];
   /** Typed words whose audio is still in the window (not yet trimmed). */
   inWindow: number;
-  /** Everything typed this dictation, for the context prompt and the count. */
+  /** Everything typed this dictation, for the count. */
   typed: string[];
 };
 
@@ -63,7 +63,7 @@ export function stepAgreement(
   let inWindow = state.inWindow + n;
 
   // Drop the audio of phrases whose words are all typed, never the last
-  // phrase of the pass: its end is where Whisper ran out of audio, not where
+  // phrase of the pass: its end is where the audio ran out, not where
   // you stopped speaking.
   let trimMs = 0;
   let trimmedWords = 0;
@@ -91,9 +91,4 @@ export function stepAgreement(
 /** The last pass, after you stop: type everything not typed yet. */
 export function finishAgreement(state: AgreementState, segs: Seg[]): string[] {
   return fresh(state, segs).words;
-}
-
-/** The context prompt for the next pass: the last words typed. */
-export function promptFor(state: AgreementState): string {
-  return state.typed.slice(-30).join(" ");
 }

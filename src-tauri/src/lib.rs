@@ -225,6 +225,9 @@ pub fn run() {
             if let Some(main) = _app.get_webview_window("main") {
                 modules::linux_media::allow_microphone(&main);
             }
+            // TOSS Terminal: dictation moved from Whisper to Whistle; free the
+            // old models' disk space.
+            stt::remove_legacy_models(_app.handle());
             Ok(())
         })
         .manage(pty::PtyState::default())
@@ -250,10 +253,8 @@ pub fn run() {
             stt::stt_model_status,
             stt::stt_download_model,
             stt::stt_remove_model,
-            stt::stt_transcribe,
             stt::stt_transcribe_live,
             stt::stt_load,
-            stt::stt_unload,
             pty::pty_open,
             pty::pty_write,
             pty::pty_resize,

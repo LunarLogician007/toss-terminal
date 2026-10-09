@@ -17,6 +17,8 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
+# TOSS Terminal: checks the prebuilt Needle engine build.rs fetches.
+sha2 = "0.10"
 
 [dependencies]
 # macos-private-api backs the transparent window NSVisualEffectView needs.
@@ -42,8 +44,8 @@ tokio = { version = "1", default-features = false, features = ["rt"] }
 tempfile = "3"
 notify = "8.2.0"
 which = "8.0.4"
-# TOSS Terminal: built-in dictation. CPU only (no Metal), Accelerate is linked.
-whisper-rs = { version = "0.16", default-features = false }
+# TOSS Terminal: built-in dictation (Whistle on the Needle engine, linked
+# by build.rs) checks its model download.
 sha2 = "0.10"
 
 [dev-dependencies]

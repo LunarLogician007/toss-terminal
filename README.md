@@ -21,9 +21,11 @@ and source control, and adds:
 - **A message line** in the top bar for copies, pastes, closed panes and
   agents needing you.
 - **Keybinding presets**: Custom, iTerm2 or Ghostty pane keys.
-- **Local dictation**: Whisper (tiny.en, 32 MB, or base.en) runs inside the
-  app, typed into the terminal as you speak. Nothing leaves your Mac. Turn it
-  on with **mic** in the status bar, then `Ctrl+B Ctrl+Space`.
+- **Local dictation**: Cactus Compute's [Whistle](https://huggingface.co/Cactus-Compute/whistle)
+  (16.9 MB, Apache-2.0) runs on the CPU inside the app, typed into the
+  terminal as you speak. Nothing leaves your computer. Turn it on with **mic**
+  in the status bar, then `Ctrl+B Ctrl+Space`. Apple Silicon Macs and Linux
+  (x86-64, arm64); not yet on Windows or Intel Macs.
 
 The built-in AI assistant from Terax is not included.
 
@@ -34,8 +36,9 @@ Builds come from GitHub Actions (`fork-build`): download the
 `~/Applications`, and open it. The app is unsigned, so macOS may ask you to
 confirm the first launch.
 
-Coming from a "Terax Tiling" build? Your settings, Spaces, themes and speech
-model are copied over on first launch.
+Coming from a "Terax Tiling" build? Your settings, Spaces and themes are
+copied over on first launch. Whisper models from earlier builds are deleted;
+Whistle downloads the first time you turn dictation on.
 
 ## Build from source
 
@@ -44,11 +47,14 @@ pnpm install
 pnpm tauri build --bundles app --no-sign
 ```
 
-Needs Node 24+, pnpm, Rust (stable) and cmake (for whisper.cpp).
+Needs Node 24+, pnpm and Rust (stable); on Linux also `libc++-dev` and
+`libc++abi-dev`. The build fetches Cactus Compute's prebuilt Needle engine
+(`libneedle.a`, pinned by revision and SHA-256) from Hugging Face; to build
+offline, put that file in a folder and set `NEEDLE_LIB_DIR` to it.
 
 ## Size
 
-About 10 MB for the app, plus 32 MB for the speech model if you use
+About 10 MB for the app, plus 17 MB for the speech model if you use
 dictation.
 
 ## License

@@ -5,7 +5,7 @@ const SAMPLE_RATE = 16_000;
 // ScriptProcessor's block: about 85 ms at 48 kHz.
 const BLOCK = 4096;
 
-/** Decode recorded audio and resample it to the 16 kHz mono Whisper takes. */
+/** Decode recorded audio and resample it to the 16 kHz mono the model takes. */
 export async function toMono16k(blob: Blob): Promise<Float32Array> {
   if (blob.size === 0) return new Float32Array(0);
   const ctx = new AudioContext();

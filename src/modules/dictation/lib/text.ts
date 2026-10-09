@@ -1,23 +1,16 @@
 import type { PrefixKey } from "@/modules/tiling/lib/prefix";
 
-export type ModelId = "tiny.en" | "base.en";
+export type ModelId = "whistle";
 
-/** The built-in models; sizes match the Rust side's table. */
-export const MODELS: readonly { id: ModelId; mb: number; label: string }[] = [
-  { id: "tiny.en", mb: 32, label: "tiny.en — 32 MB, faster" },
-  { id: "base.en", mb: 60, label: "base.en — 60 MB, more accurate" },
-];
+/** The built-in model (Cactus Compute's Whistle); the size matches stt.rs. */
+export const MODEL: { id: ModelId; mb: number } = { id: "whistle", mb: 17 };
 
-export function coerceModel(v: unknown): ModelId {
-  return MODELS.some((m) => m.id === v) ? (v as ModelId) : "tiny.en";
-}
-
-// Whisper's non-speech annotations: "[BLANK_AUDIO]", "(upbeat music)", "♪".
+// Non-speech annotations a model may emit: "[BLANK_AUDIO]", "(music)", "♪".
 const BRACKETED = /\[[^\]]*\]/g;
 const NON_SPEECH =
   /\([^)]*\b(?:music|silence|applause|laugh\w*|sigh\w*|cough\w*|noise|inaudible|breathing|typing|clicking|wind)\b[^)]*\)/gi;
 
-/** What Whisper heard, minus its markers, on one line. */
+/** What was heard, minus non-speech markers, on one line. */
 export function cleanTranscript(raw: string): string {
   return raw
     .replace(BRACKETED, " ")
@@ -43,9 +36,8 @@ export function dictationKeys(prefix: PrefixKey): string {
   return `${PREFIX_LABEL[prefix]} ${prefix === "ctrl+space" ? "v" : "Ctrl+Space"}`;
 }
 
-export function downloadingMessage(model: ModelId, pct: number): string {
-  const mb = MODELS.find((m) => m.id === model)?.mb ?? 0;
-  return `Downloading the speech model (${mb} MB): ${pct}%.`;
+export function downloadingMessage(pct: number): string {
+  return `Downloading the speech model (${MODEL.mb} MB): ${pct}%.`;
 }
 
 export function readyMessage(keys: string): string {
@@ -60,7 +52,7 @@ export function dictatedMessage(words: number, pane: string): string {
   return `Dictated ${words} ${words === 1 ? "word" : "words"} into ${pane.toLowerCase()}.`;
 }
 
-/** While listening, with the words Whisper hasn't settled on yet. */
+/** While listening, with the words not settled on yet. */
 export function liveMessage(pane: string, tail: string[]): string {
   return `Listening in ${pane.toLowerCase()}: …${tail.slice(-8).join(" ")}`;
 }

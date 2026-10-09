@@ -5,13 +5,13 @@ import {
   dictationKeys,
   downloadingMessage,
   listeningMessage,
-  MODELS,
+  MODEL,
   readyMessage,
   wordCount,
 } from "./text";
 
 describe("cleanTranscript", () => {
-  it("drops Whisper's bracketed markers and collapses whitespace", () => {
+  it("drops bracketed markers and collapses whitespace", () => {
     expect(cleanTranscript("  [BLANK_AUDIO] git   status\n")).toBe(
       "git status",
     );
@@ -41,8 +41,8 @@ describe("wording", () => {
   });
 
   it("says what is happening", () => {
-    expect(downloadingMessage("tiny.en", 42)).toBe(
-      "Downloading the speech model (32 MB): 42%.",
+    expect(downloadingMessage(42)).toBe(
+      "Downloading the speech model (17 MB): 42%.",
     );
     expect(readyMessage("Ctrl+B Ctrl+Space")).toBe(
       "Speech model ready. Press Ctrl+B Ctrl+Space to dictate.",
@@ -56,10 +56,7 @@ describe("wording", () => {
     expect(dictatedMessage(1, "Pane 1")).toBe("Dictated 1 word into pane 1.");
   });
 
-  it("lists both models, tiny.en first", () => {
-    expect(MODELS.map((m) => [m.id, m.mb])).toEqual([
-      ["tiny.en", 32],
-      ["base.en", 60],
-    ]);
+  it("offers Whistle, at its rounded size (16,919,407 bytes in stt.rs)", () => {
+    expect(MODEL).toEqual({ id: "whistle", mb: 17 });
   });
 });

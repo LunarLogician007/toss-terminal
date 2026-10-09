@@ -5,10 +5,6 @@ import {
   DEFAULT_AGENT_LAUNCH_COMMANDS,
   normalizeAgentLaunchCommands,
 } from "@/modules/agents/lib/launcher";
-import {
-  coerceModel,
-  type ModelId as SttModelId,
-} from "@/modules/dictation/lib/text";
 import { legacyThemeId } from "@/lib/legacyStorage";
 import { translucentByDefault } from "@/lib/platformDefaults";
 import { coercePreset, type PresetId } from "@/modules/shortcuts/presetIds";
@@ -120,8 +116,6 @@ export type Preferences = {
   editorFontSize: number;
   autostart: boolean;
   restoreWindowState: boolean;
-  /** The built-in Whisper model (terminal dictation, Built-in provider). */
-  sttBuiltinModel: SttModelId;
   vimMode: boolean;
   editorWordWrap: boolean;
   showHidden: boolean;
@@ -198,7 +192,6 @@ const KEY_EDITOR_THEME = "editorTheme";
 const KEY_EDITOR_FONT_SIZE = "editorFontSize";
 const KEY_AUTOSTART = "autostart";
 const KEY_RESTORE_WINDOW = "restoreWindowState";
-const KEY_STT_BUILTIN_MODEL = "sttBuiltinModel";
 const KEY_VIM_MODE = "vimMode";
 const KEY_EDITOR_WORD_WRAP = "editorWordWrap";
 const KEY_SHOW_HIDDEN = "showHidden";
@@ -294,7 +287,6 @@ export const DEFAULT_PREFERENCES: Preferences = {
   editorFontSize: EDITOR_FONT_SIZE_DEFAULT,
   autostart: false,
   restoreWindowState: true,
-  sttBuiltinModel: "tiny.en",
   vimMode: false,
   editorWordWrap: false,
   showHidden: false,
@@ -384,7 +376,6 @@ export async function loadPreferences(): Promise<Preferences> {
     restoreWindowState:
       get<boolean>(KEY_RESTORE_WINDOW) ??
       DEFAULT_PREFERENCES.restoreWindowState,
-    sttBuiltinModel: coerceModel(get<unknown>(KEY_STT_BUILTIN_MODEL)),
     vimMode: get<boolean>(KEY_VIM_MODE) ?? DEFAULT_PREFERENCES.vimMode,
     editorWordWrap:
       get<boolean>(KEY_EDITOR_WORD_WRAP) ?? DEFAULT_PREFERENCES.editorWordWrap,
@@ -595,10 +586,6 @@ export async function setRestoreWindowState(value: boolean): Promise<void> {
   await writePref(KEY_RESTORE_WINDOW, value);
 }
 
-export async function setSttBuiltinModel(value: SttModelId): Promise<void> {
-  await writePref(KEY_STT_BUILTIN_MODEL, coerceModel(value));
-}
-
 export async function setVimMode(value: boolean): Promise<void> {
   await writePref(KEY_VIM_MODE, value);
 }
@@ -770,7 +757,6 @@ export async function onPreferencesChange(
     [KEY_EDITOR_FONT_SIZE]: "editorFontSize",
     [KEY_AUTOSTART]: "autostart",
     [KEY_RESTORE_WINDOW]: "restoreWindowState",
-    [KEY_STT_BUILTIN_MODEL]: "sttBuiltinModel",
     [KEY_VIM_MODE]: "vimMode",
     [KEY_EDITOR_WORD_WRAP]: "editorWordWrap",
     [KEY_SHOW_HIDDEN]: "showHidden",

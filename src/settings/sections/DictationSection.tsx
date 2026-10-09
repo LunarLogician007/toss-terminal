@@ -1,53 +1,50 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   downloadModel,
   modelReady,
   removeModel,
 } from "@/modules/dictation/lib/builtin";
-import { coerceModel, MODELS } from "@/modules/dictation/lib/text";
-import { usePreferencesStore } from "@/modules/settings/preferences";
-import { setSttBuiltinModel } from "@/modules/settings/store";
+import { MODEL } from "@/modules/dictation/lib/text";
 import { SectionHeader } from "../components/SectionHeader";
 import { SettingRow } from "../components/SettingRow";
 
+const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
 /**
- * TOSS Terminal: local dictation. Whisper runs inside TOSS Terminal; the model is
- * downloaded once and nothing you say leaves the Mac.
+ * TOSS Terminal: local dictation. Whistle runs inside TOSS Terminal; the model
+ * is downloaded once and nothing you say leaves your computer.
  */
 export function DictationSection() {
-  const model = usePreferencesStore((s) => s.sttBuiltinModel);
   const [ready, setReady] = useState<boolean | null>(null);
   const [pct, setPct] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // The status check failed (no engine on this platform): nothing to download.
+  const [unavailable, setUnavailable] = useState(false);
 
   useEffect(() => {
     let live = true;
-    setReady(null);
-    setError(null);
-    modelReady(model)
+    modelReady(MODEL.id)
       .then((r) => live && setReady(r))
-      .catch(() => live && setReady(false));
+      .catch((e) => {
+        if (!live) return;
+        setReady(false);
+        setUnavailable(true);
+        setError(errorText(e));
+      });
     return () => {
       live = false;
     };
-  }, [model]);
+  }, []);
 
   const download = async () => {
     setError(null);
     setPct(0);
     try {
-      await downloadModel(model, setPct);
+      await downloadModel(MODEL.id, setPct);
       setReady(true);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errorText(e));
     } finally {
       setPct(null);
     }
@@ -56,10 +53,10 @@ export function DictationSection() {
   const remove = async () => {
     setError(null);
     try {
-      await removeModel(model);
+      await removeModel(MODEL.id);
       setReady(false);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errorText(e));
     }
   };
 
@@ -76,33 +73,14 @@ export function DictationSection() {
     <div className="flex flex-col gap-6">
       <SectionHeader
         title="Dictation"
-        description='Speak into the terminal. Turn it on with "mic" in the status bar, then press the prefix and Ctrl+Space (or v). Whisper runs inside TOSS Terminal; nothing you say leaves your Mac.'
+        description='Speak into the terminal. Turn it on with "mic" in the status bar, then press the prefix and Ctrl+Space (or v). Whistle by Cactus Compute runs on the CPU inside TOSS Terminal; nothing you say leaves your computer.'
       />
 
       <div className="flex flex-col gap-2">
         <SettingRow
-          title="Speech model"
-          description="tiny.en is faster; base.en is more accurate. Only the one you pick is downloaded."
+          title={`Speech model: Whistle, ${MODEL.mb} MB`}
+          description={error ?? status}
         >
-          <Select
-            value={model}
-            disabled={pct !== null}
-            onValueChange={(v) => void setSttBuiltinModel(coerceModel(v))}
-          >
-            <SelectTrigger className="h-8 w-56 text-[12px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {MODELS.map((m) => (
-                <SelectItem key={m.id} value={m.id}>
-                  {m.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </SettingRow>
-
-        <SettingRow title="Model file" description={error ?? status}>
           {ready ? (
             <Button
               variant="outline"
@@ -116,7 +94,7 @@ export function DictationSection() {
             <Button
               variant="outline"
               size="sm"
-              disabled={pct !== null || ready === null}
+              disabled={pct !== null || ready === null || unavailable}
               className="h-8 px-2.5 text-[11px]"
               onClick={() => void download()}
             >

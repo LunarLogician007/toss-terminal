@@ -8,10 +8,9 @@ import {
   loadModel,
   modelReady,
   transcribeLive,
-  unloadModel,
 } from "./lib/builtin";
 import { createDictation, type Dictation } from "./lib/controller";
-import { dictationKeys } from "./lib/text";
+import { dictationKeys, MODEL } from "./lib/text";
 
 // For a pane that isn't on screen (no live terminal to paste into).
 let writeToLeaf: (leafId: number, text: string) => boolean = () => false;
@@ -21,12 +20,11 @@ let writeToLeaf: (leafId: number, text: string) => boolean = () => false;
  * Ctrl+Space) and the status bar's "mic" switch drive the same controller.
  */
 export const dictation: Dictation = createDictation({
-  model: () => usePreferencesStore.getState().sttBuiltinModel,
+  model: () => MODEL.id,
   keys: () => dictationKeys(usePreferencesStore.getState().tilingPrefix),
   modelReady,
   download: downloadModel,
   load: loadModel,
-  unload: unloadModel,
   startMic: startLiveMic,
   transcribeLive,
   // Bracketed paste where the pane is live; dictated text is one line with

@@ -3,7 +3,6 @@ import {
   type AgreementState,
   EMPTY_AGREEMENT,
   finishAgreement,
-  promptFor,
   type Seg,
   stepAgreement,
 } from "./agreement";
@@ -42,17 +41,11 @@ export type DictationDeps = {
   keys: () => string;
   modelReady: (model: ModelId) => Promise<boolean>;
   download: (model: ModelId, onPct: (pct: number) => void) => Promise<void>;
-  /** Load the model and keep it in memory (the switch is on). */
+  /** Load the model (the switch is on). It stays until the app quits. */
   load: (model: ModelId) => Promise<void>;
-  /** Free it (the switch is off). */
-  unload: () => Promise<void>;
   startMic: () => Promise<LiveMic>;
-  /** Phrases with times, given the typed words as context. */
-  transcribeLive: (
-    model: ModelId,
-    samples: Float32Array,
-    prompt: string,
-  ) => Promise<Seg[]>;
+  /** Phrases with times. */
+  transcribeLive: (model: ModelId, samples: Float32Array) => Promise<Seg[]>;
   /** Type the text into the pane; false when the pane is gone. */
   paste: (leafId: number, text: string) => boolean;
   describe: (leafId: number) => {
@@ -76,12 +69,12 @@ function errorText(e: unknown): string {
 
 /**
  * Live dictation into a terminal pane: press to listen, and words are typed
- * into the pane it started in about a second behind you, once Whisper is
+ * into the pane it started in about a second behind you, once the model is
  * sure of them (never taken back, never Enter). Press again to type the rest.
  * Every step shows in the top bar's message line, updated in place.
  */
 export function createDictation(deps: DictationDeps) {
-  // The session switch: off at start; on keeps the model in memory.
+  // The session switch: off at start; on loads the model.
   let enabled = false;
   let switching = false;
   const listeners = new Set<() => void>();
@@ -115,7 +108,7 @@ export function createDictation(deps: DictationDeps) {
       if (pct === shown) return;
       shown = pct;
       post({
-        text: downloadingMessage(model, pct),
+        text: downloadingMessage(pct),
         kind: "info",
         sticky: true,
       });
@@ -137,7 +130,14 @@ export function createDictation(deps: DictationDeps) {
 
   async function switchOn(): Promise<void> {
     const model = deps.model();
-    if (!(await deps.modelReady(model)) && !(await download(model))) return;
+    let ready: boolean;
+    try {
+      ready = await deps.modelReady(model);
+    } catch (e) {
+      post({ text: errorText(e), kind: "error" });
+      return;
+    }
+    if (!ready && !(await download(model))) return;
     post({ text: "Loading the speech model…", kind: "info", sticky: true });
     try {
       await deps.load(model);
@@ -155,18 +155,14 @@ export function createDictation(deps: DictationDeps) {
     });
   }
 
-  async function switchOff(): Promise<void> {
+  function switchOff(): void {
     if (phase === "listening") {
       mic?.cancel();
       reset();
     }
     enabled = false;
     notify();
-    try {
-      await deps.unload();
-    } finally {
-      post({ text: "Dictation off. Memory freed.", kind: "info" });
-    }
+    post({ text: "Dictation off.", kind: "info" });
   }
 
   /** Type words into the pane; false (and dictation stops) if it's gone. */
@@ -192,17 +188,13 @@ export function createDictation(deps: DictationDeps) {
     if (samples.length >= MIN_PASS_SAMPLES) {
       let segs: Seg[];
       try {
-        segs = await deps.transcribeLive(
-          deps.model(),
-          samples,
-          promptFor(agreement),
-        );
+        segs = await deps.transcribeLive(deps.model(), samples);
       } catch (e) {
         // A failed pass isn't fatal: the next one, or the last, can recover.
         console.warn("dictation.pass", e);
         segs = [];
       }
-      // Stopped or cancelled while Whisper worked: the last pass takes over.
+      // Stopped or cancelled mid-pass: the last pass takes over.
       if (phase !== "listening" || !mic || leafId === null) return;
       if (segs.length > 0) {
         const step = stepAgreement(agreement, segs);
@@ -271,11 +263,7 @@ export function createDictation(deps: DictationDeps) {
     const leaf = leafId;
     const samples = mic.stop();
     try {
-      const segs = await deps.transcribeLive(
-        deps.model(),
-        samples,
-        promptFor(agreement),
-      );
+      const segs = await deps.transcribeLive(deps.model(), samples);
       const rest = finishAgreement(agreement, segs);
       agreement = { ...agreement, typed: [...agreement.typed, ...rest] };
       if (!type(rest)) return;
@@ -299,7 +287,7 @@ export function createDictation(deps: DictationDeps) {
 
   return {
     phase: () => phase,
-    /** The session switch is on: the model is in memory. */
+    /** The session switch is on: the model is loaded. */
     enabled: () => enabled,
     /** The switch is busy turning on or off. */
     switching: () => switching,
@@ -310,7 +298,7 @@ export function createDictation(deps: DictationDeps) {
         listeners.delete(fn);
       };
     },
-    /** Turn dictation on (download if needed, load) or off (unload). */
+    /** Turn dictation on (download if needed, load) or off. */
     async setEnabled(on: boolean): Promise<void> {
       if (switching || on === enabled) return;
       switching = true;

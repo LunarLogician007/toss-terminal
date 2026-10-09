@@ -1,53 +1,62 @@
-//! Built-in speech-to-text (TOSS Terminal): whisper.cpp on the CPU, with a
-//! model downloaded once into the app's data folder. Audio never leaves the
-//! Mac; the only network use is fetching the model file itself.
+//! Built-in speech-to-text (TOSS Terminal): Cactus Compute's Whistle on their
+//! Needle engine, on the CPU, with the 16.9 MB model downloaded once into the
+//! app's data folder. Audio never leaves the machine; the only network use is
+//! fetching the model file itself.
 
 use std::collections::HashSet;
 use std::fs::{self, File};
 use std::io::Read;
-use std::process::{Command, Stdio};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tauri::ipc::{InvokeBody, Request};
 use tauri::{AppHandle, Emitter, Manager, State};
-use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
 
 pub struct ModelSpec {
     pub id: &'static str,
     pub file: &'static str,
+    pub url: &'static str,
     pub bytes: u64,
     pub sha256: &'static str,
 }
 
-/// The models on offer, from ggerganov/whisper.cpp on Hugging Face (MIT).
-pub const MODELS: &[ModelSpec] = &[
-    ModelSpec {
-        id: "tiny.en",
-        file: "ggml-tiny.en-q5_1.bin",
-        bytes: 32_166_155,
-        sha256: "c77c5766f1cef09b6b7d47f21b546cbddd4157886b3b5d6d4f709e91e66c7c2b",
-    },
-    ModelSpec {
-        id: "base.en",
-        file: "ggml-base.en-q5_1.bin",
-        bytes: 59_721_011,
-        sha256: "4baf70dd0d7c4247ba2b81fafd9c01005ac77c2f9ef064e00dcf195d0e2fdd2f",
-    },
-];
+/// The model on offer, from Cactus-Compute/whistle on Hugging Face
+/// (Apache-2.0), pinned to a revision.
+pub const MODELS: &[ModelSpec] = &[ModelSpec {
+    id: "whistle",
+    file: "whistle.cact",
+    url: "https://huggingface.co/Cactus-Compute/whistle/resolve/b358ddadd89b7a713b5aa131f23032d3cca1b251/whistle.cact",
+    bytes: 16_919_407,
+    sha256: "b6e02f048568ac5d01a2042556c658061e699acbc0aa2a1439f52f3d461dffeb",
+}];
 
-const MODEL_BASE_URL: &str = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/";
+/// The Whisper models earlier builds downloaded, deleted on startup.
+const LEGACY_FILES: &[&str] = &["ggml-tiny.en-q5_1.bin", "ggml-base.en-q5_1.bin"];
+
 const SAMPLE_RATE: usize = 16_000;
-/// whisper.cpp skips input under a second; pad short clips with silence.
-const MIN_SAMPLES: usize = SAMPLE_RATE * 11 / 10;
-/// Drop the loaded model after this long without a transcription.
-const IDLE_UNLOAD: Duration = Duration::from_secs(5 * 60);
+/// Whistle reads at most 30 s per pass.
+#[cfg_attr(not(needle), allow(dead_code))]
+const MAX_CHUNK_SAMPLES: usize = 30 * SAMPLE_RATE;
+/// A gap between words this long ends a phrase.
+const PHRASE_PAUSE_MS: i64 = 200;
+/// Room for a full transcript (320 tokens) with per-word times.
+#[cfg_attr(not(needle), allow(dead_code))]
+const OUT_CAPACITY: usize = 64 * 1024;
+#[cfg_attr(not(needle), allow(dead_code))]
+const LANGUAGE: &str = "en";
+/// Terminal words Whistle would otherwise hear as English ("git" as "deep").
+#[cfg_attr(not(needle), allow(dead_code))]
+const KEYWORDS: &[&str] = &[
+    "git", "pnpm", "npm", "npx", "yarn", "cd", "ls", "sudo", "cargo", "docker", "kubectl", "ssh",
+    "grep", "vim", "tmux", "brew", "curl", "mkdir", "chmod",
+];
 pub const DOWNLOAD_EVENT: &str = "stt://download";
 const MODEL_HEADER: &str = "x-stt-model";
+const UNSUPPORTED: &str = "Built-in dictation isn't available on this platform yet.";
 /// The system's curl does the one download this module needs, so the app
 /// doesn't carry an HTTP and TLS stack for it (macOS always ships curl).
 #[cfg(target_os = "macos")]
@@ -56,18 +65,6 @@ const CURL: &str = "/usr/bin/curl";
 const CURL: &str = "curl.exe";
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 const CURL: &str = "curl";
-/// The encoder's frames per second of audio (1500 for Whisper's 30 s).
-const FRAMES_PER_SEC: usize = 50;
-const MAX_AUDIO_CTX: usize = 1500;
-/// Context past the end of the audio, so the last word isn't clipped.
-const AUDIO_CTX_MARGIN: usize = 64;
-
-/// Encode only as much as was said: Whisper otherwise always encodes 30 s,
-/// most of it silence, which is most of a short pass's time.
-pub fn audio_ctx_for(samples: usize) -> i32 {
-    let frames = samples.div_ceil(SAMPLE_RATE / FRAMES_PER_SEC) + AUDIO_CTX_MARGIN;
-    frames.clamp(128, MAX_AUDIO_CTX) as i32
-}
 
 pub fn model_spec(id: &str) -> Result<&'static ModelSpec, String> {
     MODELS
@@ -118,51 +115,43 @@ pub fn verify_file(path: &Path, spec: &ModelSpec) -> Result<(), String> {
     check_digest(&hex(&hasher.finalize()), spec)
 }
 
+/// Delete the Whisper models earlier builds left in `dir`.
+pub fn remove_legacy(dir: &Path) {
+    for name in LEGACY_FILES {
+        let _ = fs::remove_file(dir.join(name));
+        let _ = fs::remove_file(dir.join(format!("{name}.part")));
+    }
+}
+
+/// Free the disk space the Whisper models took (60 MB or more).
+pub fn remove_legacy_models(app: &AppHandle) {
+    if let Ok(dir) = models_dir(app) {
+        remove_legacy(&dir);
+    }
+}
+
 /// Little-endian f32 samples, as a `Float32Array`'s bytes arrive.
 pub fn samples_from_le_bytes(bytes: &[u8]) -> Result<Vec<f32>, String> {
-    if bytes.len() % 4 != 0 {
+    let (samples, rest) = bytes.as_chunks::<4>();
+    if !rest.is_empty() {
         return Err("the audio isn't whole 32-bit samples".into());
     }
-    Ok(bytes
-        .chunks_exact(4)
-        .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
-        .collect())
+    Ok(samples.iter().map(|&c| f32::from_le_bytes(c)).collect())
 }
 
-pub fn pad_to_min(mut samples: Vec<f32>) -> Vec<f32> {
-    if samples.len() < MIN_SAMPLES {
-        samples.resize(MIN_SAMPLES, 0.0);
-    }
-    samples
+/// Consecutive sample ranges of at most `max` covering `len` samples.
+pub fn chunk_ranges(len: usize, max: usize) -> Vec<(usize, usize)> {
+    (0..len)
+        .step_by(max.max(1))
+        .map(|start| (start, (start + max).min(len)))
+        .collect()
 }
 
-/// A live pass's body: a little-endian u32 prompt length, the prompt as
-/// UTF-8, then the f32 samples.
-pub fn split_prompt(bytes: &[u8]) -> Result<(String, &[u8]), String> {
-    if bytes.len() < 4 {
-        return Err("the audio is missing its header".into());
-    }
-    let len = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]) as usize;
-    let rest = &bytes[4..];
-    if rest.len() < len {
-        return Err("the prompt runs past the end of the audio".into());
-    }
-    let prompt = String::from_utf8_lossy(&rest[..len]).into_owned();
-    Ok((prompt, &rest[len..]))
+fn ms(seconds: f64) -> i64 {
+    (seconds * 1000.0).round() as i64
 }
 
-/// whisper-rs panics on a NUL byte in the prompt; keep it short, too.
-pub fn sanitize_prompt(prompt: &str) -> String {
-    let clean: String = prompt.chars().filter(|&c| c != '\0').collect();
-    let start = clean.len().saturating_sub(400);
-    let mut cut = start;
-    while !clean.is_char_boundary(cut) {
-        cut += 1;
-    }
-    clean[cut..].trim().to_string()
-}
-
-/// One phrase from Whisper, times in ms from the start of the audio given.
+/// One phrase, times in ms from the start of the audio given.
 #[derive(Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Segment {
@@ -171,20 +160,219 @@ pub struct Segment {
     end_ms: i64,
 }
 
-struct Loaded {
-    id: &'static str,
-    ctx: WhisperContext,
-    last_used: Instant,
+#[derive(Debug, PartialEq, Deserialize)]
+pub struct Word {
+    word: String,
+    start: f64,
+    end: f64,
+}
+
+/// What `needle_transcribe` writes, the fields this module reads.
+#[derive(Debug, PartialEq, Deserialize)]
+pub struct Transcript {
+    #[serde(default)]
+    text: String,
+    #[serde(default)]
+    words: Vec<Word>,
+}
+
+/// The engine's NUL-terminated JSON output.
+pub fn parse_output(out: &[u8]) -> Result<Transcript, String> {
+    let end = out
+        .iter()
+        .position(|&b| b == 0)
+        .ok_or("the transcript didn't fit")?;
+    serde_json::from_slice(&out[..end]).map_err(|e| format!("unreadable transcript: {e}"))
+}
+
+fn ends_clause(word: &str) -> bool {
+    word.ends_with(['.', ',', '?', '!', ';', ':'])
+}
+
+/// Group a pass's words into phrases at punctuation and pauses, so live
+/// dictation trims typed audio where you paused, not mid-sentence.
+/// `offset_ms` places a chunk's times within the whole clip.
+pub fn phrases(transcript: &Transcript, offset_ms: i64, chunk_ms: i64) -> Vec<Segment> {
+    let words = &transcript.words;
+    if words.is_empty() {
+        let text = transcript.text.trim();
+        if text.is_empty() {
+            return Vec::new();
+        }
+        return vec![Segment {
+            text: text.to_string(),
+            start_ms: offset_ms,
+            end_ms: offset_ms + chunk_ms,
+        }];
+    }
+    let mut out = Vec::new();
+    let mut first = 0;
+    for i in 0..words.len() {
+        let last = i + 1 == words.len();
+        let pause = !last && ms(words[i + 1].start) - ms(words[i].end) >= PHRASE_PAUSE_MS;
+        if last || pause || ends_clause(&words[i].word) {
+            let text = words[first..=i]
+                .iter()
+                .map(|w| w.word.trim())
+                .collect::<Vec<_>>()
+                .join(" ");
+            out.push(Segment {
+                text,
+                start_ms: offset_ms + ms(words[first].start),
+                end_ms: offset_ms + ms(words[i].end),
+            });
+            first = i + 1;
+        }
+    }
+    out
+}
+
+/// The Needle engine's C API (needle.h), linked by build.rs.
+#[cfg(needle)]
+mod ffi {
+    use std::ffi::{c_char, c_int, c_uchar, c_ulonglong};
+
+    extern "C" {
+        pub fn needle_load(cact: *const c_uchar, n: c_ulonglong) -> c_int;
+        pub fn needle_last_error() -> *const c_char;
+        pub fn needle_transcribe(
+            pcm: *const f32,
+            samples: c_int,
+            language: *const c_char,
+            keywords: *const c_char,
+            word_timestamps: c_int,
+            out: *mut c_char,
+            out_capacity: c_int,
+        ) -> c_int;
+    }
+}
+
+/// The engine is process-global and not thread-safe: every call holds this
+/// lock, which also records the model loaded into it.
+#[cfg(needle)]
+static ENGINE: Mutex<Option<&'static str>> = Mutex::new(None);
+
+#[cfg(needle)]
+mod engine {
+    use std::ffi::{CStr, CString};
+
+    use super::*;
+
+    fn last_error() -> String {
+        // SAFETY: the engine returns null or a NUL-terminated string it owns,
+        // valid until the next call; it is copied out under the lock.
+        let ptr = unsafe { ffi::needle_last_error() };
+        if ptr.is_null() {
+            return "unknown error".into();
+        }
+        let msg = unsafe { CStr::from_ptr(ptr) }.to_string_lossy().into_owned();
+        if msg.is_empty() {
+            "unknown error".into()
+        } else {
+            msg
+        }
+    }
+
+    /// Load `spec` into the engine unless it is there already. The engine
+    /// copies the model, so the file's bytes are dropped afterwards.
+    pub fn ensure_loaded(
+        loaded: &mut Option<&'static str>,
+        spec: &'static ModelSpec,
+        path: &Path,
+    ) -> Result<(), String> {
+        if *loaded == Some(spec.id) {
+            return Ok(());
+        }
+        let bytes = fs::read(path).map_err(|e| match e.kind() {
+            std::io::ErrorKind::NotFound => "The speech model isn't downloaded.".to_string(),
+            _ => format!("Couldn't read the speech model: {e}"),
+        })?;
+        // SAFETY: a valid buffer and its length; the engine copies it.
+        let rc = unsafe { ffi::needle_load(bytes.as_ptr(), bytes.len() as u64) };
+        if rc < 0 {
+            return Err(format!("Couldn't load the speech model: {}", last_error()));
+        }
+        *loaded = Some(spec.id);
+        Ok(())
+    }
+
+    pub fn load(spec: &'static ModelSpec, path: &Path) -> Result<(), String> {
+        let mut guard = ENGINE
+            .lock()
+            .map_err(|_| "the speech model is unavailable".to_string())?;
+        ensure_loaded(&mut guard, spec, path)
+    }
+
+    /// Phrases with times; clips over 30 s go in 30 s chunks.
+    pub fn transcribe(
+        spec: &'static ModelSpec,
+        path: &Path,
+        samples: &[f32],
+    ) -> Result<Vec<Segment>, String> {
+        let mut guard = ENGINE
+            .lock()
+            .map_err(|_| "the speech model is unavailable".to_string())?;
+        ensure_loaded(&mut guard, spec, path)?;
+        let language = CString::new(LANGUAGE).map_err(|e| e.to_string())?;
+        let keywords = CString::new(KEYWORDS.join("\n")).map_err(|e| e.to_string())?;
+        let mut out = vec![0u8; OUT_CAPACITY];
+        let mut segments = Vec::new();
+        for (start, end) in chunk_ranges(samples.len(), MAX_CHUNK_SAMPLES) {
+            let chunk = &samples[start..end];
+            out.fill(0);
+            // SAFETY: the chunk and the output buffer are valid for the
+            // lengths given, and the strings are NUL-terminated. The lock
+            // keeps the engine single-threaded.
+            let rc = unsafe {
+                ffi::needle_transcribe(
+                    chunk.as_ptr(),
+                    chunk.len() as i32,
+                    language.as_ptr(),
+                    keywords.as_ptr(),
+                    1,
+                    out.as_mut_ptr().cast(),
+                    OUT_CAPACITY as i32,
+                )
+            };
+            if rc < 0 {
+                return Err(format!("Transcription failed: {}", last_error()));
+            }
+            let transcript = parse_output(&out)?;
+            let offset_ms = (start * 1000 / SAMPLE_RATE) as i64;
+            let chunk_ms = (chunk.len() * 1000 / SAMPLE_RATE) as i64;
+            segments.extend(phrases(&transcript, offset_ms, chunk_ms));
+        }
+        Ok(segments)
+    }
+}
+
+#[cfg(not(needle))]
+mod engine {
+    use super::*;
+
+    pub fn load(_spec: &'static ModelSpec, _path: &Path) -> Result<(), String> {
+        Err(UNSUPPORTED.into())
+    }
+
+    pub fn transcribe(
+        _spec: &'static ModelSpec,
+        _path: &Path,
+        _samples: &[f32],
+    ) -> Result<Vec<Segment>, String> {
+        Err(UNSUPPORTED.into())
+    }
+}
+
+fn supported() -> Result<(), String> {
+    if cfg!(needle) {
+        Ok(())
+    } else {
+        Err(UNSUPPORTED.into())
+    }
 }
 
 #[derive(Default)]
 pub struct SttState {
-    loaded: Arc<Mutex<Option<Loaded>>>,
-    /// An idle-unload watcher is running (one at most).
-    unload_watch: Arc<AtomicBool>,
-    /// Dictation is switched on: keep the model in memory, never unload it
-    /// for being idle.
-    pinned: Arc<AtomicBool>,
     /// Models being downloaded now. The settings window and the main window
     /// can both ask; only one may write the file.
     downloading: Arc<Mutex<HashSet<&'static str>>>,
@@ -217,16 +405,6 @@ impl Drop for DownloadGuard {
     }
 }
 
-impl SttState {
-    fn unload_if(&self, id: &str) {
-        if let Ok(mut guard) = self.loaded.lock() {
-            if guard.as_ref().map(|l| l.id) == Some(id) {
-                *guard = None;
-            }
-        }
-    }
-}
-
 #[derive(Serialize)]
 pub struct ModelStatus {
     ready: bool,
@@ -243,6 +421,7 @@ struct DownloadProgress {
 /// Whether the model is on disk at full size (checked by hash when downloaded).
 #[tauri::command]
 pub fn stt_model_status(app: AppHandle, model: String) -> Result<ModelStatus, String> {
+    supported()?;
     let spec = model_spec(&model)?;
     let path = model_path(&models_dir(&app)?, spec);
     let ready = fs::metadata(&path)
@@ -254,14 +433,15 @@ pub fn stt_model_status(app: AppHandle, model: String) -> Result<ModelStatus, St
     })
 }
 
-/// Fetch the model into a `.part` file, hashing as it streams, and move it
-/// into place only once its size and checksum match.
+/// Fetch the model into a `.part` file and move it into place only once its
+/// size and checksum match.
 #[tauri::command]
 pub async fn stt_download_model(
     app: AppHandle,
     state: State<'_, SttState>,
     model: String,
 ) -> Result<(), String> {
+    supported()?;
     let spec = model_spec(&model)?;
     let Some(_guard) = DownloadGuard::claim(&state.downloading, spec.id) else {
         return Err("it's already downloading".into());
@@ -295,14 +475,13 @@ async fn download_to(app: &AppHandle, spec: &'static ModelSpec, part: &Path) -> 
 /// Fetch with curl (HTTPS only, redirects included, capped at the model's
 /// size), report progress from the file's growth, then check size and SHA-256.
 fn curl_download(app: &AppHandle, spec: &'static ModelSpec, part: &Path) -> Result<(), String> {
-    let url = format!("{MODEL_BASE_URL}{}", spec.file);
     let mut child = Command::new(CURL)
         .args(["--fail", "--location", "--silent", "--show-error"])
         .args(["--proto", "=https", "--proto-redir", "=https"])
         .args(["--max-filesize", &spec.bytes.to_string()])
         .arg("--output")
         .arg(part)
-        .arg(&url)
+        .arg(spec.url)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
@@ -342,10 +521,11 @@ fn curl_download(app: &AppHandle, spec: &'static ModelSpec, part: &Path) -> Resu
     verify_file(part, spec)
 }
 
+/// Delete the model file. The engine keeps its copy until the app quits (it
+/// has no unload), so this frees disk, not memory.
 #[tauri::command]
-pub fn stt_remove_model(app: AppHandle, state: State<'_, SttState>, model: String) -> Result<(), String> {
+pub fn stt_remove_model(app: AppHandle, model: String) -> Result<(), String> {
     let spec = model_spec(&model)?;
-    state.unload_if(spec.id);
     match fs::remove_file(model_path(&models_dir(&app)?, spec)) {
         Ok(()) => Ok(()),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
@@ -353,35 +533,14 @@ pub fn stt_remove_model(app: AppHandle, state: State<'_, SttState>, model: Strin
     }
 }
 
-/// Dictation switched on: load the model now and keep it in memory.
+/// Dictation switched on: load the model now, so the first pass is quick.
 #[tauri::command]
-pub async fn stt_load(
-    app: AppHandle,
-    state: State<'_, SttState>,
-    model: String,
-) -> Result<(), String> {
+pub async fn stt_load(app: AppHandle, model: String) -> Result<(), String> {
     let spec = model_spec(&model)?;
     let path = model_path(&models_dir(&app)?, spec);
-    let loaded = state.loaded.clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        let mut guard = loaded
-            .lock()
-            .map_err(|_| "the speech model is unavailable".to_string())?;
-        ensure_loaded(&mut guard, spec, &path)
-    })
-    .await
-    .map_err(|e| e.to_string())??;
-    state.pinned.store(true, Ordering::SeqCst);
-    Ok(())
-}
-
-/// Dictation switched off: free the model's memory.
-#[tauri::command]
-pub fn stt_unload(state: State<'_, SttState>) {
-    state.pinned.store(false, Ordering::SeqCst);
-    if let Ok(mut guard) = state.loaded.lock() {
-        *guard = None;
-    }
+    tauri::async_runtime::spawn_blocking(move || engine::load(spec, &path))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 fn model_from(request: &Request<'_>) -> Result<&'static ModelSpec, String> {
@@ -400,216 +559,17 @@ fn raw_body<'a>(request: &'a Request<'_>) -> Result<&'a [u8], String> {
     }
 }
 
-async fn transcribe_async(
-    app: &AppHandle,
-    state: &SttState,
-    spec: &'static ModelSpec,
-    samples: Vec<f32>,
-    prompt: String,
-    timestamps: bool,
-) -> Result<Vec<Segment>, String> {
-    let path = model_path(&models_dir(app)?, spec);
-    let loaded = state.loaded.clone();
-    let samples = pad_to_min(samples);
-    let segments = tauri::async_runtime::spawn_blocking(move || {
-        run_whisper(&loaded, spec, &path, &samples, &prompt, timestamps)
-    })
-    .await
-    .map_err(|e| e.to_string())??;
-    if !state.pinned.load(Ordering::SeqCst) {
-        watch_idle(
-            state.loaded.clone(),
-            state.unload_watch.clone(),
-            state.pinned.clone(),
-        );
-    }
-    Ok(segments)
-}
-
-/// 16 kHz mono f32 samples in (raw bytes, model id in a header), text out.
+/// A live dictation pass: 16 kHz mono f32 samples in (raw bytes, model id in
+/// a header), phrases with times out, so typed phrases can be trimmed from
+/// the audio.
 #[tauri::command]
-pub async fn stt_transcribe(
-    app: AppHandle,
-    state: State<'_, SttState>,
-    request: Request<'_>,
-) -> Result<String, String> {
+pub async fn stt_transcribe_live(app: AppHandle, request: Request<'_>) -> Result<Vec<Segment>, String> {
     let spec = model_from(&request)?;
     let samples = samples_from_le_bytes(raw_body(&request)?)?;
-    let segments = transcribe_async(&app, &state, spec, samples, String::new(), false).await?;
-    let text: String = segments.iter().map(|s| s.text.as_str()).collect();
-    Ok(text.trim().to_string())
-}
-
-/// A live dictation pass: prompt + samples in (see `split_prompt`), phrases
-/// with times out, so typed phrases can be trimmed from the audio.
-#[tauri::command]
-pub async fn stt_transcribe_live(
-    app: AppHandle,
-    state: State<'_, SttState>,
-    request: Request<'_>,
-) -> Result<Vec<Segment>, String> {
-    let spec = model_from(&request)?;
-    let (prompt, audio) = split_prompt(raw_body(&request)?)?;
-    let samples = samples_from_le_bytes(audio)?;
-    transcribe_async(&app, &state, spec, samples, sanitize_prompt(&prompt), true).await
-}
-
-/// Performance cores on Apple Silicon: splitting the work onto efficiency
-/// cores too makes every pass wait for the slowest of them.
-#[cfg(target_os = "macos")]
-fn performance_cores() -> Option<usize> {
-    let name = c"hw.perflevel0.physicalcpu";
-    let mut value: libc::c_int = 0;
-    let mut size = std::mem::size_of::<libc::c_int>();
-    // SAFETY: a valid C string, and an int-sized out buffer with its size.
-    let rc = unsafe {
-        libc::sysctlbyname(
-            name.as_ptr(),
-            (&mut value as *mut libc::c_int).cast(),
-            &mut size,
-            std::ptr::null_mut(),
-            0,
-        )
-    };
-    (rc == 0 && value > 0).then_some(value as usize)
-}
-
-#[cfg(not(target_os = "macos"))]
-fn performance_cores() -> Option<usize> {
-    None
-}
-
-fn threads() -> i32 {
-    let cores = performance_cores().unwrap_or_else(|| {
-        std::thread::available_parallelism()
-            .map(|n| n.get().min(4))
-            .unwrap_or(2)
-    });
-    cores.clamp(1, 8) as i32
-}
-
-/// Make sure `spec` is the model in memory, loading it (and dropping any
-/// other) if not.
-fn ensure_loaded(
-    guard: &mut Option<Loaded>,
-    spec: &'static ModelSpec,
-    path: &Path,
-) -> Result<(), String> {
-    if guard.as_ref().map(|l| l.id) != Some(spec.id) {
-        // Only one model in memory: drop the other before loading.
-        *guard = None;
-        if !path.exists() {
-            return Err("The speech model isn't downloaded.".into());
-        }
-        // Without a log backend this silences whisper.cpp's stderr chatter.
-        whisper_rs::install_logging_hooks();
-        let mut params = WhisperContextParameters::default();
-        params.use_gpu(false);
-        let ctx = WhisperContext::new_with_params(path, params)
-            .map_err(|e| format!("Couldn't load the speech model: {e}"))?;
-        *guard = Some(Loaded {
-            id: spec.id,
-            ctx,
-            last_used: Instant::now(),
-        });
-    }
-    Ok(())
-}
-
-fn run_whisper(
-    loaded: &Mutex<Option<Loaded>>,
-    spec: &'static ModelSpec,
-    path: &Path,
-    samples: &[f32],
-    prompt: &str,
-    timestamps: bool,
-) -> Result<Vec<Segment>, String> {
-    let mut guard = loaded
-        .lock()
-        .map_err(|_| "the speech model is unavailable".to_string())?;
-    ensure_loaded(&mut guard, spec, path)?;
-    let Some(entry) = guard.as_mut() else {
-        return Err("the speech model is unavailable".into());
-    };
-    entry.last_used = Instant::now();
-    let mut state = entry.ctx.create_state().map_err(|e| e.to_string())?;
-    let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
-    params.set_language(Some("en"));
-    params.set_n_threads(threads());
-    params.set_no_timestamps(!timestamps);
-    params.set_audio_ctx(audio_ctx_for(samples.len()));
-    // One decode per pass: no retries at higher temperatures, which can
-    // multiply a pass's time when Whisper is unsure.
-    params.set_temperature_inc(0.0);
-    if !prompt.is_empty() {
-        params.set_initial_prompt(prompt);
-    }
-    params.set_no_context(true);
-    params.set_suppress_blank(true);
-    params.set_suppress_nst(true);
-    params.set_print_special(false);
-    params.set_print_progress(false);
-    params.set_print_realtime(false);
-    params.set_print_timestamps(false);
-    state
-        .full(params, samples)
-        .map_err(|e| format!("Transcription failed: {e}"))?;
-    let mut segments = Vec::new();
-    for segment in state.as_iter() {
-        if let Ok(text) = segment.to_str_lossy() {
-            segments.push(Segment {
-                text: text.into_owned(),
-                // whisper.cpp counts in centiseconds.
-                start_ms: segment.start_timestamp() * 10,
-                end_ms: segment.end_timestamp() * 10,
-            });
-        }
-    }
-    entry.last_used = Instant::now();
-    Ok(segments)
-}
-
-/// Drop the model once it has gone unused for IDLE_UNLOAD. One watcher
-/// thread at most, however many passes run.
-fn watch_idle(
-    loaded: Arc<Mutex<Option<Loaded>>>,
-    running: Arc<AtomicBool>,
-    pinned: Arc<AtomicBool>,
-) {
-    if running.swap(true, Ordering::SeqCst) {
-        return;
-    }
-    std::thread::spawn(move || loop {
-        let idle = match loaded.lock() {
-            Ok(guard) => guard.as_ref().map(|l| l.last_used.elapsed()),
-            Err(_) => None,
-        };
-        let wait = match idle {
-            Some(idle) if idle < IDLE_UNLOAD => IDLE_UNLOAD - idle,
-            Some(_) => {
-                // Switched on since: the model stays.
-                if pinned.load(Ordering::SeqCst) {
-                    running.store(false, Ordering::SeqCst);
-                    return;
-                }
-                if let Ok(mut guard) = loaded.lock() {
-                    if guard
-                        .as_ref()
-                        .is_some_and(|l| l.last_used.elapsed() >= IDLE_UNLOAD)
-                    {
-                        *guard = None;
-                    }
-                }
-                running.store(false, Ordering::SeqCst);
-                return;
-            }
-            None => {
-                running.store(false, Ordering::SeqCst);
-                return;
-            }
-        };
-        std::thread::sleep(wait + Duration::from_millis(500));
-    });
+    let path = model_path(&models_dir(&app)?, spec);
+    tauri::async_runtime::spawn_blocking(move || engine::transcribe(spec, &path, &samples))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 #[cfg(test)]
@@ -620,15 +580,35 @@ mod tests {
     const HELLO: ModelSpec = ModelSpec {
         id: "test",
         file: "test.bin",
+        url: "https://example.invalid/test.bin",
         bytes: 5,
         sha256: "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
     };
 
+    fn word(word: &str, start: f64, end: f64) -> Word {
+        Word {
+            word: word.into(),
+            start,
+            end,
+        }
+    }
+
+    fn seg(text: &str, start_ms: i64, end_ms: i64) -> Segment {
+        Segment {
+            text: text.into(),
+            start_ms,
+            end_ms,
+        }
+    }
+
     #[test]
-    fn finds_both_models_and_rejects_unknown() {
-        assert_eq!(model_spec("tiny.en").unwrap().bytes, 32_166_155);
-        assert_eq!(model_spec("base.en").unwrap().file, "ggml-base.en-q5_1.bin");
-        assert!(model_spec("large").is_err());
+    fn finds_whistle_and_rejects_others() {
+        let spec = model_spec("whistle").unwrap();
+        assert_eq!(spec.bytes, 16_919_407);
+        assert!(spec.url.starts_with("https://huggingface.co/Cactus-Compute/whistle/resolve/"));
+        assert!(spec.url.ends_with(spec.file));
+        assert!(model_spec("tiny.en").is_err());
+        assert!(model_spec("base.en").is_err());
     }
 
     #[test]
@@ -669,6 +649,25 @@ mod tests {
     }
 
     #[test]
+    fn legacy_whisper_models_are_removed_and_whistle_kept() {
+        let dir = tempfile::tempdir().unwrap();
+        for name in [
+            "ggml-tiny.en-q5_1.bin",
+            "ggml-base.en-q5_1.bin.part",
+            "whistle.cact",
+        ] {
+            fs::write(dir.path().join(name), b"x").unwrap();
+        }
+        remove_legacy(dir.path());
+        remove_legacy(dir.path());
+        let left: Vec<_> = fs::read_dir(dir.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name().into_string().unwrap())
+            .collect();
+        assert_eq!(left, ["whistle.cact"]);
+    }
+
+    #[test]
     fn samples_round_trip_from_bytes() {
         let want = [0.5f32, -1.0, 0.25];
         let bytes: Vec<u8> = want.iter().flat_map(|s| s.to_le_bytes()).collect();
@@ -677,58 +676,104 @@ mod tests {
     }
 
     #[test]
-    fn short_clips_are_padded_long_ones_kept() {
-        assert_eq!(pad_to_min(vec![0.1; 10]).len(), MIN_SAMPLES);
-        assert_eq!(pad_to_min(vec![0.1; MIN_SAMPLES + 7]).len(), MIN_SAMPLES + 7);
+    fn long_clips_split_into_thirty_second_chunks() {
+        assert_eq!(chunk_ranges(0, 10), vec![]);
+        assert_eq!(chunk_ranges(7, 10), vec![(0, 7)]);
+        assert_eq!(chunk_ranges(10, 10), vec![(0, 10)]);
+        assert_eq!(chunk_ranges(25, 10), vec![(0, 10), (10, 20), (20, 25)]);
+        let two_min = chunk_ranges(120 * SAMPLE_RATE, MAX_CHUNK_SAMPLES);
+        assert_eq!(two_min.len(), 4);
+        assert!(two_min.iter().all(|(s, e)| e - s <= MAX_CHUNK_SAMPLES));
+    }
+
+    #[test]
+    fn reads_the_engines_json_up_to_the_nul() {
+        let mut out = br#"{"text":"git status","language":"en","words":[{"word":"git","start":0.0,"end":0.24,"probability":0.9},{"word":"status","start":0.24,"end":0.8,"probability":0.99}],"ttft_ms":5.0,"decode_tps":900.0}"#.to_vec();
+        out.extend_from_slice(&[0, b'x', b'y']);
+        let t = parse_output(&out).unwrap();
+        assert_eq!(t.text, "git status");
+        assert_eq!(t.words, vec![word("git", 0.0, 0.24), word("status", 0.24, 0.8)]);
+    }
+
+    #[test]
+    fn silence_parses_to_nothing() {
+        let t = parse_output(b"{\"text\":\"\",\"language\":\"\",\"ttft_ms\":0.0,\"decode_tps\":0.0}\0").unwrap();
+        assert!(phrases(&t, 0, 2000).is_empty());
+    }
+
+    #[test]
+    fn rejects_output_without_a_nul_or_with_bad_json() {
+        assert!(parse_output(b"{\"text\":\"cut off").unwrap_err().contains("fit"));
+        assert!(parse_output(b"{\"text\":\0").unwrap_err().contains("unreadable"));
+    }
+
+    #[test]
+    fn phrases_break_at_punctuation_and_pauses() {
+        let t = Transcript {
+            text: String::new(),
+            words: vec![
+                word("Run", 0.0, 0.24),
+                word("tests.", 0.24, 0.64),
+                word("Then", 0.72, 0.96),
+                word("commit", 0.96, 1.28),
+                // 320 ms of silence before "and".
+                word("and", 1.6, 1.76),
+                word("push", 1.76, 2.0),
+            ],
+        };
+        assert_eq!(
+            phrases(&t, 0, 2400),
+            vec![
+                seg("Run tests.", 0, 640),
+                seg("Then commit", 720, 1280),
+                seg("and push", 1600, 2000),
+            ]
+        );
+    }
+
+    #[test]
+    fn short_gaps_keep_a_phrase_together() {
+        let t = Transcript {
+            text: String::new(),
+            words: vec![word("open", 0.0, 0.3), word("settings", 0.42, 0.9)],
+        };
+        assert_eq!(phrases(&t, 0, 1000), vec![seg("open settings", 0, 900)]);
+    }
+
+    #[test]
+    fn later_chunks_are_placed_after_the_earlier_ones() {
+        let t = Transcript {
+            text: String::new(),
+            words: vec![word("hello", 0.5, 1.0)],
+        };
+        assert_eq!(phrases(&t, 30_000, 4000), vec![seg("hello", 30_500, 31_000)]);
+    }
+
+    #[test]
+    fn text_without_word_times_is_one_phrase_over_the_chunk() {
+        let t = Transcript {
+            text: " list files. ".into(),
+            words: vec![],
+        };
+        assert_eq!(phrases(&t, 0, 1500), vec![seg("list files.", 0, 1500)]);
+    }
+
+    #[test]
+    fn keywords_are_single_lines() {
+        for k in KEYWORDS {
+            assert!(!k.is_empty() && !k.contains(['\n', '\0']), "{k}");
+        }
     }
 
     #[test]
     fn only_one_download_per_model_at_a_time() {
         let set = Arc::new(Mutex::new(HashSet::new()));
-        let first = DownloadGuard::claim(&set, "tiny.en");
+        let first = DownloadGuard::claim(&set, "whistle");
         assert!(first.is_some());
-        assert!(DownloadGuard::claim(&set, "tiny.en").is_none());
-        assert!(DownloadGuard::claim(&set, "base.en").is_some());
+        assert!(DownloadGuard::claim(&set, "whistle").is_none());
+        assert!(DownloadGuard::claim(&set, "other").is_some());
         drop(first);
-        assert!(DownloadGuard::claim(&set, "tiny.en").is_some());
-    }
-
-    #[test]
-    fn live_body_splits_into_prompt_and_audio() {
-        let mut body = 3u32.to_le_bytes().to_vec();
-        body.extend_from_slice(b"git");
-        body.extend_from_slice(&0.5f32.to_le_bytes());
-        let (prompt, audio) = split_prompt(&body).unwrap();
-        assert_eq!(prompt, "git");
-        assert_eq!(samples_from_le_bytes(audio).unwrap(), vec![0.5]);
-        assert!(split_prompt(&[1, 0]).is_err());
-        assert!(split_prompt(&9u32.to_le_bytes()).is_err());
-    }
-
-    #[test]
-    fn prompts_lose_nul_bytes_and_keep_the_last_words() {
-        assert_eq!(sanitize_prompt("git\0 status"), "git status");
-        let long = "word ".repeat(200);
-        let clean = sanitize_prompt(&long);
-        assert!(clean.len() <= 400);
-        assert!(clean.ends_with("word"));
-        assert_eq!(sanitize_prompt("é".repeat(300).as_str()).chars().count(), 200);
-    }
-
-    #[test]
-    fn audio_ctx_follows_the_audio_length() {
-        // 2 s → 100 frames + margin; never under 128, never over Whisper's 1500.
-        assert_eq!(audio_ctx_for(2 * SAMPLE_RATE), 164);
-        assert_eq!(audio_ctx_for(10), 128);
-        assert_eq!(audio_ctx_for(60 * SAMPLE_RATE), 1500);
-        // A partial frame still counts.
-        assert_eq!(audio_ctx_for(2 * SAMPLE_RATE + 1), 165);
-    }
-
-    #[test]
-    fn uses_at_least_one_thread_and_at_most_eight() {
-        let n = threads();
-        assert!((1..=8).contains(&n), "{n}");
+        assert!(DownloadGuard::claim(&set, "whistle").is_some());
     }
 
     #[test]
@@ -743,6 +788,87 @@ mod tests {
     #[test]
     fn model_path_is_in_the_folder() {
         let p = model_path(Path::new("/tmp/models"), &MODELS[0]);
-        assert_eq!(p, Path::new("/tmp/models/ggml-tiny.en-q5_1.bin"));
+        assert_eq!(p, Path::new("/tmp/models/whistle.cact"));
+    }
+}
+
+/// The real engine on the real model. Run in CI with `--ignored`, given
+/// WHISTLE_MODEL (the .cact). The speech clip is a recorded fixture, so the
+/// test doesn't depend on the runner having voices.
+#[cfg(all(test, needle))]
+mod engine_tests {
+    use super::*;
+
+    fn silence(seconds: usize) -> Vec<f32> {
+        std::iter::repeat_n(0.0, seconds * SAMPLE_RATE).collect()
+    }
+
+    fn model() -> PathBuf {
+        PathBuf::from(std::env::var("WHISTLE_MODEL").expect("set WHISTLE_MODEL"))
+    }
+
+    /// The samples of a 16-bit PCM WAV's data chunk.
+    fn read_wav(path: &Path) -> Vec<f32> {
+        let bytes = fs::read(path).unwrap();
+        let mut i = 12;
+        while i + 8 <= bytes.len() {
+            let id = &bytes[i..i + 4];
+            let len = u32::from_le_bytes(bytes[i + 4..i + 8].try_into().unwrap()) as usize;
+            if id == b"data" {
+                return bytes[i + 8..(i + 8 + len).min(bytes.len())]
+                    .as_chunks::<2>()
+                    .0
+                    .iter()
+                    .map(|&c| i16::from_le_bytes(c) as f32 / 32768.0)
+                    .collect();
+            }
+            i += 8 + len + (len & 1);
+        }
+        panic!("no data chunk in {}", path.display());
+    }
+
+    #[test]
+    #[ignore]
+    fn the_model_verifies_and_loads() {
+        verify_file(&model(), &MODELS[0]).unwrap();
+        engine::load(&MODELS[0], &model()).unwrap();
+        engine::load(&MODELS[0], &model()).unwrap();
+    }
+
+    #[test]
+    #[ignore]
+    fn silence_transcribes_to_nothing() {
+        let segs = engine::transcribe(&MODELS[0], &model(), &silence(2)).unwrap();
+        assert!(segs.is_empty(), "{segs:?}");
+    }
+
+    #[test]
+    #[ignore]
+    fn over_thirty_seconds_is_chunked_not_refused() {
+        let segs = engine::transcribe(&MODELS[0], &model(), &silence(45)).unwrap();
+        assert!(segs.is_empty(), "{segs:?}");
+    }
+
+    #[test]
+    #[ignore]
+    fn speech_is_heard_with_terminal_words() {
+        // "Please run git status and then open the tiling settings." Without
+        // keyword biasing Whistle hears "git" as "deep".
+        let wav = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/dictation.wav");
+        let samples = read_wav(&wav);
+        let peak = samples.iter().fold(0.0f32, |m, s| m.max(s.abs()));
+        eprintln!("clip: {} samples, peak {peak:.3}", samples.len());
+        assert!(samples.len() > SAMPLE_RATE && peak > 0.05);
+        let segs = engine::transcribe(&MODELS[0], &model(), &samples).unwrap();
+        let heard = segs
+            .iter()
+            .map(|s| s.text.to_lowercase())
+            .collect::<Vec<_>>()
+            .join(" ");
+        eprintln!("heard: {heard}");
+        for w in ["git", "status", "tiling", "settings"] {
+            assert!(heard.contains(&w.to_lowercase()), "missing {w:?} in {heard:?}");
+        }
+        assert!(segs.windows(2).all(|p| p[0].end_ms <= p[1].start_ms));
     }
 }

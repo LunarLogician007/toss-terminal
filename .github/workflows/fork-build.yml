@@ -1,13 +1,24 @@
-# Builds TOSS Terminal for macOS as an unsigned app and uploads it as an
-# artifact. Upstream's release.yml needs signing secrets this fork doesn't
-# have. TOSS Terminal has its own identifier (app.toss.terminal) and no
-# updater; new builds are installed by hand.
+# Builds TOSS Terminal for macOS as an unsigned app and for Ubuntu as a .deb,
+# and uploads both as artifacts. Upstream's release.yml needs signing secrets
+# this fork doesn't have. TOSS Terminal has its own identifier
+# (app.toss.terminal) and no updater; new builds are installed by hand.
 name: fork-build
 
 on:
   workflow_dispatch:
   push:
-    branches: [tuios-tiling, tuios-tiling-v086]
+    branches: [main, whistle-stt, tuios-tiling, tuios-tiling-v086]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: fork-build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Dictation's model (Cactus Compute's Whistle), pinned like stt.rs pins it.
+  WHISTLE_URL: https://huggingface.co/Cactus-Compute/whistle/resolve/b358ddadd89b7a713b5aa131f23032d3cca1b251/whistle.cact
+  WHISTLE_SHA256: b6e02f048568ac5d01a2042556c658061e699acbc0aa2a1439f52f3d461dffeb
 
 jobs:
   macos:
@@ -24,12 +35,22 @@ jobs:
         with:
           workspaces: src-tauri
       - run: pnpm install --frozen-lockfile
+      - run: pnpm check-types
       - run: pnpm test
       - name: Build the unsigned app
         run: pnpm tauri build --bundles app --no-sign
       - name: Test dictation, migration and agent detection
         working-directory: src-tauri
         run: cargo test --release --lib -- stt::tests migrate::tests agent_detect::tests
+      - name: Fetch the Whistle model
+        run: |
+          curl --fail --location --silent --show-error --retry 3 -o "$RUNNER_TEMP/whistle.cact" "$WHISTLE_URL"
+          echo "$WHISTLE_SHA256  $RUNNER_TEMP/whistle.cact" | shasum -a 256 -c
+      - name: Transcribe with the real engine
+        working-directory: src-tauri
+        env:
+          WHISTLE_MODEL: ${{ runner.temp }}/whistle.cact
+        run: cargo test --release --lib stt::engine_tests -- --ignored --nocapture
       - name: Measure the app
         working-directory: src-tauri/target/release/bundle/macos
         run: du -sh "TOSS Terminal.app" "TOSS Terminal.app/Contents/MacOS/"*
@@ -44,13 +65,11 @@ jobs:
   # Ubuntu 26.04 .deb, built on 26.04 itself so its dependencies match.
   linux:
     runs-on: ubuntu-26.04
-    env:
-      # Build whisper.cpp for a common x86-64 baseline (AVX2), not this
-      # runner's CPU, so the app runs on other people's machines.
-      GGML_NATIVE: "OFF"
     steps:
       - uses: actions/checkout@v7
       - name: Install Linux build dependencies
+        # libc++ is linked statically into the app: the Needle engine needs
+        # it, and the .deb gains no runtime dependency.
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -58,7 +77,8 @@ jobs:
             libgtk-3-dev \
             librsvg2-dev \
             libssl-dev \
-            cmake \
+            libc++-dev \
+            libc++abi-dev \
             build-essential
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
@@ -66,24 +86,42 @@ jobs:
           node-version: 24
           cache: pnpm
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
       - uses: swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
       - run: pnpm install --frozen-lockfile
+      - run: pnpm check-types
       - run: pnpm test
       - name: Build the .deb
         run: pnpm tauri build --bundles deb
       - name: Test dictation, migration and agent detection
         working-directory: src-tauri
         run: cargo test --release --lib -- stt::tests migrate::tests agent_detect::tests
+      - name: Fetch the Whistle model
+        run: |
+          curl --fail --location --silent --show-error --retry 3 -o "$RUNNER_TEMP/whistle.cact" "$WHISTLE_URL"
+          echo "$WHISTLE_SHA256  $RUNNER_TEMP/whistle.cact" | sha256sum -c
+      - name: Transcribe with the real engine
+        working-directory: src-tauri
+        env:
+          WHISTLE_MODEL: ${{ runner.temp }}/whistle.cact
+        run: cargo test --release --lib stt::engine_tests -- --ignored --nocapture
       - name: Measure and describe the package
         working-directory: src-tauri/target/release/bundle/deb
         run: |
           ls -la *.deb
           dpkg-deb --info *.deb | grep -E "Package|Version|Architecture|Depends|Installed-Size"
           cp *.deb toss-terminal_amd64.deb
+      - name: The app doesn't need libc++ at run time
+        working-directory: src-tauri/target/release
+        run: |
+          ldd toss | tee /dev/stderr | grep -q "libc++" && exit 1 || true
       - uses: actions/upload-artifact@v7
         with:
           name: toss-terminal-ubuntu-deb
           path: src-tauri/target/release/bundle/deb/toss-terminal_amd64.deb
-
+      - name: Clippy
+        working-directory: src-tauri
+        run: cargo clippy --all-targets -- -D warnings

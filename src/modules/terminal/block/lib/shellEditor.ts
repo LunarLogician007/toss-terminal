@@ -35,7 +35,8 @@ import {
 import { tags as t } from "@lezer/highlight";
 import { completionIcon } from "./completionIcons";
 import { historyOpen, historyPopover } from "./historyPopover";
-import { inlineSuggestion } from "./inlineSuggest";
+import type { Suggestion } from "./history";
+import { inlineSuggestion, offerFix } from "./inlineSuggest";
 import { pathCompletions } from "./pathComplete";
 
 const shellLanguage = StreamLanguage.define(shell);
@@ -52,8 +53,11 @@ export type ShellEditorOptions = {
   onEscape?: () => boolean;
   /** Live command-name list (history first-words + PATH) for completion. */
   commandNames?: () => string[];
-  /** Fish-style full-command autosuggestion for the current input line. */
-  suggest?: (line: string) => Promise<string | null>;
+  /**
+   * Fish-style full-command autosuggestion for the current input line, or a
+   * correction of a command that failed before.
+   */
+  suggest?: (line: string) => Promise<Suggestion | null>;
   /** Recency-ranked history for the ArrowUp popover (Ctrl-R style). */
   historyList?: (query: string, limit: number) => Promise<string[]>;
   /** Live cwd of the terminal, for path completion in argument position. */
@@ -68,6 +72,8 @@ export type ShellEditorHandle = {
   getValue(): string;
   setValue(text: string): void;
   clear(): void;
+  /** Offer a failed command's correction on the empty input. */
+  offerFix(text: string): void;
   setEditable(editable: boolean): void;
   retheme(fontFamily: string, fontSize: number, fontWeight: string): void;
   destroy(): void;
@@ -457,6 +463,7 @@ export function createShellEditor(opts: ShellEditorOptions): ShellEditorHandle {
         selection: { anchor: text.length },
       }),
     clear: () => clear(view),
+    offerFix: (text) => offerFix(view, text),
     setEditable: (editable) =>
       view.dispatch({
         effects: editableComp.reconfigure(EditorView.editable.of(editable)),

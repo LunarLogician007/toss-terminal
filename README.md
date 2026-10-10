@@ -21,6 +21,12 @@ and source control, and adds:
 - **A message line** in the top bar for copies, pastes, closed panes and
   agents needing you.
 - **Keybinding presets**: Custom, iTerm2 or Ghostty pane keys.
+- **Command corrections**, like Warp: when a command fails, its fix is
+  offered at the next prompt (`→` takes it). Fixes come from what you
+  retyped last time (`gti status` then `git status`), the closest installed
+  program, or the tool's own "did you mean". Commands that only ever failed
+  stop being suggested, in TOSS's suggestions and in zsh-autosuggestions.
+  Learned locally, in a small file in the app's data folder.
 - **Local dictation**: Cactus Compute's [Whistle](https://huggingface.co/Cactus-Compute/whistle)
   (16.9 MB, Apache-2.0) runs on the CPU inside the app, typed into the
   terminal as you speak. Nothing leaves your computer. Turn it on with **mic**

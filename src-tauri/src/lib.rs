@@ -228,6 +228,7 @@ pub fn run() {
             // TOSS Terminal: dictation moved from Whisper to Whistle; free the
             // old models' disk space.
             stt::remove_legacy_models(_app.handle());
+            history::init(_app.handle());
             Ok(())
         })
         .manage(pty::PtyState::default())
@@ -329,6 +330,7 @@ pub fn run() {
             history::history_commands,
             history::history_record,
             history::history_list,
+            history::history_finish,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
@@ -340,6 +342,9 @@ pub fn run() {
                     if let Some(state) = app.try_state::<lsp::LspState>() {
                         state.kill_all();
                     }
+                    // TOSS Terminal: don't lose corrections learned in the
+                    // last seconds before quitting.
+                    history::save_learned(app);
                 }
                 // macOS delivers "Open With" files here, not as argv (cold and
                 // warm start, several at once). Seed the drain-once state and

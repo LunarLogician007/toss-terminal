@@ -34,9 +34,72 @@ if [[ -z "$__TOSS_HOOKS_LOADED" ]]; then
     done
   }
 
+  # TOSS Terminal: keep commands that only ever failed out of
+  # zsh-autosuggestions. The app keeps the list across sessions
+  # (TOSS_FAILED_COMMANDS); this shell adds its own failures as they happen
+  # and drops a command once it works. Your own
+  # ZSH_AUTOSUGGEST_HISTORY_IGNORE pattern is kept.
+  typeset -gA _toss_failed
+  typeset -g _toss_user_ignore="${ZSH_AUTOSUGGEST_HISTORY_IGNORE-}"
+  typeset -g _toss_last_cmd=""
+
+  _toss_ignore_update() {
+    emulate -L zsh
+    local -a pats
+    local c
+    for c in "${(@k)_toss_failed}"; do pats+=("${(b)c}"); done
+    [[ -n "$_toss_user_ignore" ]] && pats+=("$_toss_user_ignore")
+    if (( ${#pats} )); then
+      typeset -g ZSH_AUTOSUGGEST_HISTORY_IGNORE="(${(j:|:)pats})"
+    else
+      unset ZSH_AUTOSUGGEST_HISTORY_IGNORE
+    fi
+  }
+
+  _toss_failed_load() {
+    emulate -L zsh
+    [[ -r "$TOSS_FAILED_COMMANDS" ]] || return
+    local line
+    while IFS= read -r line; do
+      [[ -n "$line" ]] && _toss_failed[$line]=1
+    done < "$TOSS_FAILED_COMMANDS"
+    _toss_ignore_update
+  }
+
+  # Like the app: a "no" from grep or diff (exit 1) isn't a failure, and a
+  # signal (Ctrl+C, 128 and up) isn't either.
+  _toss_failed_note() {
+    emulate -L zsh
+    local ret=$1 cmd="$_toss_last_cmd"
+    _toss_last_cmd=""
+    [[ -z "$cmd" || "$cmd" == *$'\n'* ]] && return
+    if (( ret == 0 )); then
+      (( ${+_toss_failed[$cmd]} )) || return
+      local -A kept
+      local k
+      for k in "${(@k)_toss_failed}"; do
+        [[ "$k" == "$cmd" ]] || kept[$k]=1
+      done
+      _toss_failed=("${(@kv)kept}")
+      _toss_ignore_update
+    elif (( ret < 128 )); then
+      if (( ret == 1 )); then
+        case "${${(z)cmd}[1]}" in
+          grep|egrep|fgrep|rg|ag|ack|diff|cmp|test|'['|'[['|false|which|type|command|pgrep|pidof) return ;;
+        esac
+      fi
+      (( ${+_toss_failed[$cmd]} || ${#_toss_failed} >= 200 )) && return
+      _toss_failed[$cmd]=1
+      _toss_ignore_update
+    fi
+  }
+
+  _toss_failed_load
+
   _toss_precmd() {
     local _toss_ret=$?
     printf '\e]133;D;%s\e\\' "$_toss_ret"
+    _toss_failed_note "$_toss_ret"
     printf '\e]7;file://%s%s\e\\' "${HOST}" "$(_toss_urlencode "$PWD")"
     # TOSS Terminal: if zsh-autosuggestions is loaded the shell suggests by
     # itself, so tell the app to keep its own command suggestions off.
@@ -70,6 +133,7 @@ if [[ -z "$__TOSS_HOOKS_LOADED" ]]; then
     # Mark that a real command ran, so the next prompt switches from one blank
     # row (first prompt, no block above) to two (end gap + header row).
     [[ -n "$TOSS_BLOCKS" ]] && _toss_block_seen=1
+    _toss_last_cmd="$1"
     local cmd="${1//[[:cntrl:]]/ }"
     printf '\e]133;C;%s\e\\' "${cmd[1,256]}"
   }

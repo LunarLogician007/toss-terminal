@@ -1,14 +1,27 @@
 import type { IDecoration, IDisposable, IMarker, Terminal } from "@xterm/xterm";
 import { usePreferencesStore } from "@/modules/settings/preferences";
-import { historyRecord, historySuggest } from "../block/lib/history";
-import { acceptKind, createSuggestEngine, type SuggestEngine } from "./engine";
+import {
+  historyFinish,
+  historyRecord,
+  historySuggest,
+  isFailure,
+} from "../block/lib/history";
+import {
+  acceptKind,
+  createSuggestEngine,
+  type Offer,
+  type SuggestEngine,
+} from "./engine";
 
 /**
  * TOSS Terminal's command suggestions, wired to the panes: one engine per
  * pane (leaf), fed its keystrokes and shell prompt state, drawing its grey
- * text with an xterm decoration at the cursor. Normal terminals only; Blocks
- * tabs have their own input.
+ * text with an xterm decoration at the cursor, and offering a correction when
+ * a command fails. Normal terminals only; Blocks tabs have their own input.
  */
+
+/** Lines above the cursor read for a failed command's error and hint. */
+const OUTPUT_LINES = 40;
 
 /** The OSC the shell integration sends when the shell suggests by itself. */
 export const SHELL_SUGGESTS_OSC = 7777;
@@ -30,10 +43,22 @@ function clear(p: Pane) {
   p.marker = null;
 }
 
-function draw(p: Pane, suffix: string | null) {
+/** The last lines of output, up to the cursor (a failed command's error). */
+function outputTail(term: Terminal): string {
+  const buf = term.buffer.active;
+  const end = buf.baseY + buf.cursorY;
+  const lines: string[] = [];
+  for (let i = Math.max(0, end - OUTPUT_LINES); i <= end; i++) {
+    lines.push(buf.getLine(i)?.translateToString(true) ?? "");
+  }
+  return lines.join("\n");
+}
+
+function draw(p: Pane, offer: Offer | null) {
   clear(p);
   const term = p.term;
-  if (!term || !suffix) return;
+  if (!term || !offer?.draw) return;
+  const suffix = offer.draw;
   const buf = term.buffer.active;
   if (buf.type === "alternate") return;
   const x = buf.cursorX;
@@ -55,6 +80,7 @@ function draw(p: Pane, suffix: string | null) {
   decoration.onRender((el) => {
     el.textContent = text;
     el.classList.add("toss-suggestion");
+    if (offer.fix) el.classList.add("toss-suggestion-fix");
     const o = term.options;
     el.style.fontFamily = o.fontFamily ?? "monospace";
     el.style.fontSize = `${o.fontSize ?? 13}px`;
@@ -78,7 +104,15 @@ function paneFor(leafId: number): Pane {
         usePreferencesStore.getState().terminalSuggestions !== "off",
       suggest: historySuggest,
       record: historyRecord,
-      show: (suffix) => draw(pane, suffix),
+      // Only a failure's output is read and sent, to find its error's hint.
+      finish: (command, exit) =>
+        historyFinish(
+          leafId,
+          command,
+          exit,
+          isFailure(exit) && pane.term ? outputTail(pane.term) : "",
+        ),
+      show: (offer) => draw(pane, offer),
     }),
   };
   panes.set(leafId, pane);
@@ -115,6 +149,19 @@ export function attachSuggestions(leafId: number, term: Terminal): () => void {
 /** The shell's prompt state, from its integration markers. */
 export function suggestPromptState(leafId: number, running: boolean): void {
   panes.get(leafId)?.engine.promptState(running);
+}
+
+/** The shell started a command (OSC 133 C), with its text when sent. */
+export function suggestCommandStarted(leafId: number, command: string): void {
+  panes.get(leafId)?.engine.commandStarted(command);
+}
+
+/** The command ended (OSC 133 D) with this exit status. */
+export function suggestCommandFinished(
+  leafId: number,
+  exit: number | null,
+): void {
+  panes.get(leafId)?.engine.commandFinished(exit);
 }
 
 /** Keystrokes and pastes on their way to a pane's shell. */

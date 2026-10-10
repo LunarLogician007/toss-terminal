@@ -42,12 +42,24 @@ export type PromptTracker = {
   dispose: () => void;
 };
 
+/** The exit status in an OSC 133 D payload ("D;1"), or null when absent. */
+export function parseExitStatus(data: string): number | null {
+  const m = /^D;(-?\d+)/.exec(data);
+  return m ? Number.parseInt(m[1], 10) : null;
+}
+
 export function registerPromptTracker(
   term: Terminal,
   state?: ShellIntegrationState,
   // Fires on C (process executing) and A/D (back at prompt). Distinct from
   // inCommand, which is already true from B while the user merely types.
   onCommandState?: (running: boolean) => void,
+  // TOSS Terminal: the command's text from C (zsh, fish, PowerShell send
+  // it) and its exit status from D, for command corrections.
+  commands?: {
+    onStart?: (command: string) => void;
+    onEnd?: (exit: number | null) => void;
+  },
 ): PromptTracker {
   let marker: IMarker | null = null;
   const d = term.parser.registerOscHandler(133, (data) => {
@@ -65,10 +77,12 @@ export function registerPromptTracker(
       // OSC 133 C — command pre-execution marker; still inside command.
       if (state) state.inCommand = true;
       onCommandState?.(true);
+      commands?.onStart?.(data.startsWith("C;") ? data.slice(2) : "");
     } else if (data.startsWith("D")) {
       // OSC 133 D — command ends.
       if (state) state.inCommand = false;
       onCommandState?.(false);
+      commands?.onEnd?.(parseExitStatus(data));
     }
     return true;
   });

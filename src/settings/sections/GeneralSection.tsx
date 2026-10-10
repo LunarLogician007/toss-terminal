@@ -239,7 +239,7 @@ export function GeneralSection() {
               </TooltipProvider>
             </span>
           }
-          description="Hardware-accelerated rendering. Turn off if text shows corruption or blank tiles."
+          description="Hardware-accelerated rendering, uses much less CPU. Turn off if text shows corruption, blank tiles, or a black terminal with the see-through window."
         >
           <Switch
             checked={terminalWebglEnabled}

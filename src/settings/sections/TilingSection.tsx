@@ -10,7 +10,6 @@ import { Switch } from "@/components/ui/switch";
 import { usePreferencesStore } from "@/modules/settings/preferences";
 import {
   coerceTilingPrefix,
-  setTilingAnimations,
   setTilingDimUnfocused,
   setTilingGap,
   setTilingPrefix,
@@ -24,7 +23,6 @@ export function TilingSection() {
   const gap = usePreferencesStore((s) => s.tilingGap);
   const titleBars = usePreferencesStore((s) => s.tilingTitleBars);
   const dim = usePreferencesStore((s) => s.tilingDimUnfocused);
-  const animations = usePreferencesStore((s) => s.tilingAnimations);
 
   return (
     <div className="flex flex-col gap-6">
@@ -88,16 +86,6 @@ export function TilingSection() {
           <Switch
             checked={dim}
             onCheckedChange={(v) => void setTilingDimUnfocused(v)}
-          />
-        </SettingRow>
-
-        <SettingRow
-          title="Animations"
-          description="Panes slide and resize when they open, close, swap or zoom. Off when macOS Reduce motion is on."
-        >
-          <Switch
-            checked={animations}
-            onCheckedChange={(v) => void setTilingAnimations(v)}
           />
         </SettingRow>
       </div>

@@ -89,16 +89,7 @@ export default function (pi: ExtensionAPI) {
 // emitted (legacy /dev/tty Claude, current TerminalSequence, Osc, Windows
 // helper). Used to prune our own groups before reinserting so installs are
 // idempotent and migrate older markers.
-// The Terax forms are hooks from before the TOSS Terminal rename (or stock
-// Terax): ours to replace, so an install never leaves a duplicate behind.
-const OWNED_MARKERS: [&str; 6] = [
-    "notify;TOSS;",
-    "toss;notify",
-    "__toss_notify",
-    "notify;Terax;",
-    "terax;notify",
-    "__terax_notify",
-];
+const OWNED_MARKERS: [&str; 3] = ["notify;TOSS;", "toss;notify", "__toss_notify"];
 
 fn find(agent: &str) -> Result<&'static AgentSpec, String> {
     AGENTS

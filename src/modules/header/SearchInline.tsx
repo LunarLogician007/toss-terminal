@@ -41,10 +41,12 @@ type Props = {
   target: SearchTarget;
   /** When true, collapse to an icon-only button until the user opens it. */
   compact?: boolean;
+  /** With compact: nothing at all until opened (the floating search). */
+  hideWhenClosed?: boolean;
 };
 
 export const SearchInline = forwardRef<SearchInlineHandle, Props>(
-  function SearchInline({ target, compact }, ref) {
+  function SearchInline({ target, compact, hideWhenClosed }, ref) {
     const [q, setQ] = useState("");
     // In compact mode the field is hidden behind an icon until activated.
     // In normal mode the field is always present.
@@ -136,6 +138,7 @@ export const SearchInline = forwardRef<SearchInlineHandle, Props>(
       // git-history: the list filters live; Enter has no next/prev semantics.
     };
 
+    if (hideWhenClosed && !expanded) return null;
     return (
       <div
         className="relative h-7 shrink-0 transition-[width] duration-200 ease-out"

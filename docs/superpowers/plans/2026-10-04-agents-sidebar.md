@@ -1,7 +1,7 @@
 # Agents sidebar: implementation plan
 
 Spec: `docs/superpowers/specs/2026-10-04-agents-sidebar-design.md`
-Branch: `tuios-tiling-v086`. Tests: vitest (node), pure logic only, as Terax does.
+Branch: `tuios-tiling-v086`. Tests: vitest (node), pure logic only, as the original does.
 
 1. **`listAgents` + `formatElapsed`** (`src/modules/agents/sidebar/listAgents.ts`)
    - Tests first: one row per pane with a known agent; PTY phase wins; session

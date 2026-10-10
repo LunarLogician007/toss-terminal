@@ -1,6 +1,6 @@
 // Kept from before the TOSS Terminal rename: renaming an IndexedDB database
 // would orphan the background images already saved in it.
-const DB_NAME = "terax-bg-images";
+const DB_NAME = "toss-bg-images";
 const STORE = "images";
 const VERSION = 1;
 

@@ -6,7 +6,9 @@ import {
 } from "@/components/ui/resizable";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { setActivePtyInjector } from "@/lib/activePty";
 import { consumeLaunchFiles, getLaunchDir } from "@/lib/launchDir";
+import { native } from "@/lib/native";
 import { quoteShellArg } from "@/lib/shellQuote";
 import { useZoom } from "@/lib/useZoom";
 import { isMarkdownPath } from "@/lib/utils";
@@ -17,9 +19,13 @@ import {
   nextAttentionTarget,
   validateAgentLaunchCommand,
 } from "@/modules/agents";
-import { setActivePtyInjector } from "@/lib/activePty";
-import { native } from "@/lib/native";
+import { AgentsSection } from "@/modules/agents/sidebar/AgentsSection";
 import { CommandPalette, createCommandItems } from "@/modules/command-palette";
+import {
+  dictation as dictationSwitch,
+  useDictation,
+  useDictationSwitch,
+} from "@/modules/dictation/useDictation";
 import {
   type EditorPaneHandle,
   NewEditorDialog,
@@ -30,17 +36,29 @@ import { FileExplorer, type FileExplorerHandle } from "@/modules/explorer";
 import type { GitHistorySearchHandle } from "@/modules/git-history";
 import {
   Header,
+  readChromeShown,
+  SearchInline,
   type SearchInlineHandle,
   type SearchTarget,
+  saveChromeShown,
+  setWindowButtonsHidden,
 } from "@/modules/header";
 import { setLspNavigator } from "@/modules/lsp";
+import {
+  closePaneMessage,
+  closeTabMessage,
+  describePane,
+  MessageLine,
+  postMessage,
+  setPaneLookup,
+} from "@/modules/messages";
 import type { PreviewPaneHandle } from "@/modules/preview";
 import { openSettingsWindow } from "@/modules/settings/openSettingsWindow";
 import { usePreferencesStore } from "@/modules/settings/preferences";
 import {
-  shouldDisablePaneSwapShortcut,
   type ShortcutHandlers,
   type ShortcutId,
+  shouldDisablePaneSwapShortcut,
   useGlobalShortcuts,
 } from "@/modules/shortcuts";
 import {
@@ -87,20 +105,12 @@ import {
   useThemeFileEditing,
 } from "@/modules/theme";
 import {
+  PrefixIndicator,
   type TilingAction,
   TilingHelp,
   useTilingActionsStore,
   useTilingPrefix,
 } from "@/modules/tiling";
-import { AgentsSection } from "@/modules/agents/sidebar/AgentsSection";
-import { useDictation } from "@/modules/dictation/useDictation";
-import {
-  closePaneMessage,
-  closeTabMessage,
-  describePane,
-  postMessage,
-  setPaneLookup,
-} from "@/modules/messages";
 import { useWorkspaceEnvStore, type WorkspaceEnv } from "@/modules/workspace";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -709,7 +719,15 @@ export default function App() {
     handleClose,
   ]);
 
-  const [zenMode, setZenMode] = useState(false);
+  // The top and status bars, hidden and shown by the view.zenMode shortcut.
+  const [chromeShown, setChromeShown] = useState(readChromeShown);
+  useEffect(() => {
+    saveChromeShown(chromeShown);
+    setWindowButtonsHidden(!chromeShown);
+  }, [chromeShown]);
+  const zenMode = !chromeShown;
+  const toggleChrome = useCallback(() => setChromeShown((v) => !v), []);
+  const mic = useDictationSwitch();
 
   // Focus an agent's tab, switching to its space first so the header and tab
   // strip don't end up showing a different space than the focused pane.
@@ -885,7 +903,7 @@ export default function App() {
       "view.zoomIn": zoomIn,
       "view.zoomOut": zoomOut,
       "view.zoomReset": zoomReset,
-      "view.zenMode": () => setZenMode((v) => !v),
+      "view.zenMode": toggleChrome,
       "editor.undo": () => editorRefs.current.get(activeId)?.undo(),
       "editor.redo": () => editorRefs.current.get(activeId)?.redo(),
       "editor.codeComplete": () =>
@@ -1025,7 +1043,6 @@ export default function App() {
   );
 
   const onActivateAgent = activateAgentTarget;
-
 
   const handleLeafExit = useCallback(
     (leafId: number, _code: number) => {
@@ -1196,6 +1213,12 @@ export default function App() {
             openSpacesOverview: () => setSwitcherOpen(true),
             newSpace: () => void handleNewSpace(),
             switchSpace: (id) => useSpaces.getState().setActive(id),
+            spaceTabs,
+            selectTab: setActiveId,
+            chromeShown,
+            toggleChrome,
+            micOn: mic.on,
+            toggleMic: () => void dictationSwitch.setEnabled(!mic.on),
           })
         : [],
     [
@@ -1216,6 +1239,11 @@ export default function App() {
       toggleSidebar,
       activeSpaceId,
       handleNewSpace,
+      spaceTabs,
+      setActiveId,
+      chromeShown,
+      toggleChrome,
+      mic.on,
     ],
   );
 
@@ -1303,7 +1331,31 @@ export default function App() {
             />
           )}
 
-          <main className="zoom-content flex min-h-0 flex-1 flex-col">
+          <main className="zoom-content relative flex min-h-0 flex-1 flex-col">
+            {zenMode && (
+              <>
+                {/* The window's grip, over the gap above the panes. */}
+                <div
+                  data-tauri-drag-region
+                  className="absolute inset-x-0 top-0 z-20 h-1.5"
+                />
+                {/* What the bars showed, only while there is something. */}
+                <div className="pointer-events-none absolute top-1.5 right-2 z-30 flex max-w-[60%] items-center justify-end gap-2">
+                  <PrefixIndicator />
+                  <div className="pointer-events-auto flex min-w-0 justify-end border border-border bg-popover px-1.5 empty:hidden">
+                    <MessageLine onJump={onActivateAgent} />
+                  </div>
+                  <div className="pointer-events-auto bg-popover empty:hidden">
+                    <SearchInline
+                      ref={searchInlineRef}
+                      target={searchTarget}
+                      compact
+                      hideWhenClosed
+                    />
+                  </div>
+                </div>
+              </>
+            )}
             <ResizablePanelGroup
               orientation="horizontal"
               className="min-h-0 flex-1"
@@ -1359,7 +1411,7 @@ export default function App() {
                   persistSidebarCollapsed(size.inPixels <= 0);
                 }}
               >
-                <div className="toss-tui-sidebar flex h-full min-h-0 flex-col border-l border-border/60 bg-card">
+                <div className="flex h-full min-h-0 flex-col border-l border-border/60 bg-card">
                   <div
                     key={sidebarView}
                     className="min-h-0 flex-1 toss-panel-in"

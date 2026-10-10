@@ -1,15 +1,15 @@
-# Terax Tiling, project 1: tuios-style tiling and window look
+# TOSS Terminal, project 1: tuios-style tiling and window look
 
 Date: 2026-10-04
-Branch: `tuios-tiling` (fork of crynta/terax-ai at `3301de2`)
+Branch: `tuios-tiling` (fork of the original at `3301de2`)
 Status: design approved in conversation; this spec is waiting for review
 
 ## 1. Goal
 
-Bring the tiling of [tuios](https://github.com/Gaurav-Gosain/tuios) to terax's
+Bring the tiling of [tuios](https://github.com/Gaurav-Gosain/tuios) to the original's
 terminal tabs. That means automatic BSP placement, panes drawn as separate
 windows with gaps, rounded corners and title bars, smooth animations, and a
-Ctrl+B keyboard layer. Everything else in terax stays as it is.
+Ctrl+B keyboard layer. Everything else in the original stays as it is.
 
 This is the first of three projects in the fork, built in this order:
 
@@ -22,10 +22,10 @@ This is the first of three projects in the fork, built in this order:
 - Tiling for editor, markdown or preview tabs. Tiling applies to terminals
   inside a terminal tab only; the other tabs stay full tabs, as they are today.
 - Master-stack and scrolling layouts. BSP only.
-- Changes to terax's Spaces, sidebar, editor or markdown viewer.
+- Changes to the original's Spaces, sidebar, editor or markdown viewer.
 - The theme and agent work (projects 2 and 3).
 
-## 2. What exists today in terax
+## 2. What exists today in the original
 
 - `src/modules/terminal/lib/panes.ts` (289 lines): `PaneNode` is either a leaf
   or a split with `dir: "row" | "col"` and `children`. It has `splitLeaf`,
@@ -81,7 +81,7 @@ Swaps reuse the existing `swapLeafInDirection`, given rectangles from
 - **New terminal** (Ctrl+B Enter) splits the focused leaf with `splitLeafBinary`
   along `spiralDirection`. The new terminal takes the focused leaf's working
   folder and gets focus. Any zoom ends.
-- **Close** (Ctrl+B x, or the shell exiting) goes through terax's existing
+- **Close** (Ctrl+B x, or the shell exiting) goes through the original's existing
   close path, so its prompts still apply, then `removeLeafAndCollapse`. Focus
   moves to the leaf that took the space. Closing the last leaf closes the tab,
   as it does today.
@@ -106,7 +106,7 @@ Swaps reuse the existing `swapLeafInDirection`, given rectangles from
   a terminal.
 - `TileWindow` (`src/modules/tiling/TileWindow.tsx`) is a window frame around the
   existing `TerminalPane`:
-  - a 1 px border with terax's `--radius-lg` corners;
+  - a 1 px border with the original's `--radius-lg` corners;
   - a title bar about 24 px tall, with close and zoom dots on the left (tuios's
     default), the terminal title (or the folder name), and an agent badge
     (◐ working, ● needs attention, ✓ finished) read from the existing agent
@@ -122,7 +122,7 @@ Swaps reuse the existing `swapLeafInDirection`, given rectangles from
 ### 3.4 Animations
 
 - `TileWindow` animates `transform` (translate) together with `width` and
-  `height`, using terax's `--dur-base` duration and `--ease-premium` easing.
+  `height`, using the original's `--dur-base` duration and `--ease-premium` easing.
 - **Open:** the new window starts as the zero-size edge of the leaf it split
   and grows, while that leaf moves to its new half.
 - **Close:** the window shrinks toward its sibling, which grows into the space.
@@ -132,11 +132,11 @@ Swaps reuse the existing `swapLeafInDirection`, given rectangles from
   un-zooming reverses this.
 - **Terminal size:** while a window animates, its terminal keeps its old size,
   clipped by the frame. On `transitionend`, or straight away if animations are
-  off, the terminal is fitted once. terax's `PtyResizeScheduler` (256 ms
+  off, the terminal is fitted once. the original's `PtyResizeScheduler` (256 ms
   debounce) then sends one PTY resize.
 - **A change during an animation:** windows go to the new rectangle from where
   they are. The fit happens only after the last transition.
-- **Resizing the terax window** re-tiles with transitions off.
+- **Resizing the window** re-tiles with transitions off.
 - **Off switches:** `prefers-reduced-motion: reduce`, or the Animations setting
   turned off, makes every change instant.
 
@@ -168,7 +168,7 @@ as `useGlobalShortcuts`.
 | `x` | close the pane |
 | `?` | show a cheat-sheet of these keys |
 
-Each action is also registered as a terax shortcut ID (`tiling.newTerminal`,
+Each action is also registered as a shortcut ID (`tiling.newTerminal`,
 `tiling.focusLeft`, and so on) with no default chord, so it can be bound in
 Settings → Shortcuts.
 
@@ -191,7 +191,7 @@ There is a new "Tiling" section in `src/settings/sections/TilingSection.tsx`.
 - Loading checks it: the length must match the children, every value must be
   finite and greater than 0, and the values are renormalised to sum to 1.
   Anything else is dropped, which gives equal shares.
-- Spaces saved by stock terax (no `sizes`) load unchanged.
+- Spaces saved by the original (no `sizes`) load unchanged.
 - `zoomedLeafId` is never saved.
 
 ### 3.8 Edge cases and errors
@@ -229,12 +229,12 @@ Changed (each gets a short "modified" header, as Apache 2.0 requires):
 - `src/app/App.tsx`: register `useTilingPrefix`
 - `src/modules/statusbar/StatusBar.tsx`: the prefix indicator
 - `src/settings/SettingsApp.tsx`: add the Tiling section
-- `NOTICE` (new): says this is a modified fork of terax
+- `NOTICE` (new): says this is a modified fork of the original
 
 ## 5. Testing
 
 Tests are written before the code they cover, using vitest and React Testing
-Library, as terax already does.
+Library, as the original already does.
 
 - **`layout.ts`:** gaps and edges with 1–5 panes; `sizes` respected; neighbours
   share edges after rounding; zoom; neighbour choice with ties and with none;
@@ -253,8 +253,8 @@ Library, as terax already does.
 - **Before calling it done:** `pnpm test`, `pnpm check-types`, `pnpm lint`,
   `pnpm format:check` and `pnpm size` all pass.
 - **In the built app:** open, close, swap and zoom animations; one PTY resize
-  per change (checked with terax's terminal diagnostics); idle and animating
-  CPU compared with stock terax.
+  per change (checked with the original's terminal diagnostics); idle and animating
+  CPU compared with the original.
 
 ## 6. Building and delivery
 
@@ -265,15 +265,15 @@ Library, as terax already does.
   `tuios-tiling` and on demand:
   - on `macos-latest`: `pnpm install` then `pnpm tauri build --bundles app`,
     with a config override that turns off `createUpdaterArtifacts` and the
-    updater, and sets the identifier to `app.crynta.terax.tiling` and the
-    product name to "Terax Tiling";
+    updater, and sets the identifier to `app.toss.terminal` and the
+    product name to "TOSS Terminal";
   - the app is unsigned, and the zipped `.app` is uploaded as an artifact
     (about 9–10 MB).
 - **On the Mac:** `gh run download` into `~/Applications`. Because the app is
   unsigned, the first launch needs right-click → Open, or clearing the
   quarantine flag.
 - **Why the override matters:** without it, the fork would share settings and
-  data with the installed Terax (same identifier), and the updater could
+  data with the installed original (same identifier), and the updater could
   replace it with an upstream release.
 - **The upstream files stay untouched:** `tauri.conf.json`, `release.yml` and
   `ci.yml` are not edited, which keeps merging upstream changes easy.

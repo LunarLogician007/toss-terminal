@@ -4,7 +4,7 @@
 > Whistle, not Whisper. See "Whistle" at the end; the rest describes the
 > original Whisper design.
 
-Terax Tiling, branch `tuios-tiling-v086`. 2026-10-05.
+TOSS Terminal, branch `tuios-tiling-v086`. 2026-10-05.
 
 ## What it is
 
@@ -15,7 +15,7 @@ into the focused pane, not run. A local Whisper model does the work.
 Agreed with the user:
 
 - Model: **Whisper tiny.en by default, base.en optional** ("the smaller
-  plan"), run by whisper.cpp inside Terax. Everything is open source
+  plan"), run by whisper.cpp inside the app. Everything is open source
   (Whisper, whisper.cpp and the model files are MIT; the Rust binding,
   whisper-rs, is Unlicense).
 - Size: as small as practical. tiny.en is **32.2 MB**
@@ -26,7 +26,7 @@ Agreed with the user:
 - Memory: the model is unloaded after 5 minutes without dictation.
 - Trigger: **Ctrl+B, then Ctrl+Space** to start, the same to stop.
 
-## What Terax already has
+## What the app already has
 
 The AI chat box has a mic button (`useWhisperRecording.ts`, `stt.ts`). It
 records in the webview with `MediaRecorder` and sends the audio to one of

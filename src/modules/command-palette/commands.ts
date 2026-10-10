@@ -1,5 +1,5 @@
 import type { SearchTarget } from "@/modules/header";
-import { MAX_PANES_PER_TAB, type Tab } from "@/modules/tabs";
+import { labelFor, MAX_PANES_PER_TAB, type Tab } from "@/modules/tabs";
 import { leafIds } from "@/modules/terminal";
 import {
   Cancel01Icon,
@@ -11,12 +11,14 @@ import {
   KeyboardIcon,
   LayoutTwoColumnIcon,
   LayoutTwoRowIcon,
+  Mic01Icon,
   PaintBoardIcon,
   Search01Icon,
   Settings01Icon,
   SidebarLeftIcon,
   SourceCodeIcon,
   TerminalIcon,
+  ViewIcon,
 } from "@hugeicons/core-free-icons";
 import type { PaletteItem } from "./types";
 
@@ -56,6 +58,13 @@ export type CommandPaletteActionContext = {
   openSpacesOverview: () => void;
   newSpace: () => void;
   switchSpace: (id: string) => void;
+  /** The tabs of the space shown, to jump to by name. */
+  spaceTabs: Tab[];
+  selectTab: (id: number) => void;
+  chromeShown: boolean;
+  toggleChrome: () => void;
+  micOn: boolean;
+  toggleMic: () => void;
 };
 
 const noop = () => {};
@@ -108,7 +117,14 @@ export function createCommandItems(
       id: "spaces.overview",
       title: "Spaces: Overview",
       group: "Spaces",
-      keywords: ["spaces", "sessions", "overview", "organize", "manage", "move"],
+      keywords: [
+        "spaces",
+        "sessions",
+        "overview",
+        "organize",
+        "manage",
+        "move",
+      ],
       icon: DashboardSquare01Icon,
       run: ctx.openSpacesOverview,
     },
@@ -126,9 +142,17 @@ export function createCommandItems(
       group: "Spaces" as const,
       keywords: ["space", "switch", "session", sp.name],
       icon: DashboardSquare01Icon,
-      disabledReason:
-        sp.id === ctx.activeSpaceId ? "Current space" : undefined,
+      disabledReason: sp.id === ctx.activeSpaceId ? "Current space" : undefined,
       run: () => ctx.switchSpace(sp.id),
+    })),
+    ...ctx.spaceTabs.map((tab, i) => ({
+      id: `tab.goto.${tab.id}`,
+      title: `Go to tab ${i + 1}: ${labelFor(tab)}`,
+      group: "Tabs" as const,
+      keywords: ["tab", "switch", "go", labelFor(tab)],
+      icon: TerminalIcon,
+      disabledReason: tab.id === ctx.activeId ? "Current tab" : undefined,
+      run: () => ctx.selectTab(tab.id),
     })),
     {
       id: "tab.new",
@@ -268,6 +292,25 @@ export function createCommandItems(
       icon: SidebarLeftIcon,
       shortcutId: "sidebar.toggle",
       run: ctx.toggleSidebar,
+    },
+    {
+      id: "view.chrome",
+      title: ctx.chromeShown
+        ? "Hide the top and status bars"
+        : "Show the top and status bars",
+      group: "View",
+      keywords: ["zen", "tab bar", "status bar", "header", "chrome", "tabs"],
+      icon: ViewIcon,
+      shortcutId: "view.zenMode",
+      run: ctx.toggleChrome,
+    },
+    {
+      id: "dictation.toggle",
+      title: ctx.micOn ? "Dictation: turn off" : "Dictation: turn on",
+      group: "View",
+      keywords: ["mic", "microphone", "voice", "speech", "whistle"],
+      icon: Mic01Icon,
+      run: ctx.toggleMic,
     },
   ];
 }

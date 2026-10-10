@@ -1,5 +1,3 @@
-// TOSS Terminal: carry pre-rename localStorage over before anything reads it.
-import "@/lib/legacyStorageBoot";
 import "@xterm/xterm/css/xterm.css";
 import "./styles/globals.css";
 

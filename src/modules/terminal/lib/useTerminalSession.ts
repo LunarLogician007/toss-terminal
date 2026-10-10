@@ -959,11 +959,9 @@ export function useTerminalSession({
   }, [scrollback]);
 
   const webglPref = usePreferencesStore((p) => p.terminalWebglEnabled);
-  // TOSS Terminal: no WebGL while the window is see-through (see webglAllowed).
-  const translucent = usePreferencesStore((p) => p.windowTranslucent);
   useEffect(() => {
-    applyWebglPreference(webglPref && !translucent);
-  }, [webglPref, translucent]);
+    applyWebglPreference(webglPref);
+  }, [webglPref]);
 
   const cursorBlink = usePreferencesStore((p) => p.terminalCursorBlink);
   useEffect(() => {

@@ -13,8 +13,7 @@ export const SIDEBAR_MIN_WIDTH = 220;
 export const SIDEBAR_MAX_WIDTH = 480;
 const SIDEBAR_WIDTH_STORAGE_KEY = "toss.sidebar.width";
 const SIDEBAR_VIEW_STORAGE_KEY = "toss.sidebar.view";
-// Closed until opened (Cmd+B): the window starts as terminals only.
-const SIDEBAR_COLLAPSED_STORAGE_KEY = "toss.sidebar.closed";
+const SIDEBAR_COLLAPSED_STORAGE_KEY = "toss.sidebar.collapsed";
 
 function clampSidebarWidth(width: number): number {
   return Math.min(
@@ -47,9 +46,9 @@ function readSidebarView(): SidebarViewId {
 
 function readSidebarCollapsed(): boolean {
   try {
-    return window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) !== "0";
+    return window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "1";
   } catch {
-    return true;
+    return false;
   }
 }
 

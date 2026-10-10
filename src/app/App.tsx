@@ -719,7 +719,7 @@ export default function App() {
     handleClose,
   ]);
 
-  // No top or status bar unless asked for (the view.zenMode shortcut).
+  // The top and status bars, hidden and shown by the view.zenMode shortcut.
   const [chromeShown, setChromeShown] = useState(readChromeShown);
   useEffect(() => {
     saveChromeShown(chromeShown);

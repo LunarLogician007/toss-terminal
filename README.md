@@ -10,10 +10,10 @@ TOSS Terminal is built on Tauri 2, Rust and React. It has a fast xterm.js
 terminal, file explorer, Markdown viewer, code editor, web preview and source
 control, and:
 
-- **A terminal-only window**: no top bar, status bar or sidebar until you ask
-  for them. `Cmd+Shift+'` shows the bars, `Cmd+B` the sidebar, and the
-  command palette (`Cmd+P`) has everything else: tabs, Spaces, dictation, git.
-  Monospace, square corners, no blur, shadows or animations.
+- **A terminal-style interface**: monospace, square corners, and no blur,
+  shadows or animations, so the window stays light on CPU. `Cmd+Shift+'`
+  hides the tab and status bars (search, messages and the prefix then float
+  top right), `Cmd+B` the sidebar.
 - **tuios-style tiling**: panes place themselves (BSP), with gaps and title
   bars (drag one to move the window); a `Ctrl+B` prefix drives them (`|` and
   `-` split, arrows move, `z` zoom, `x` close, `?` lists every key).
